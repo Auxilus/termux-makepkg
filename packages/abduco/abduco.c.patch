@@ -1,0 +1,12 @@
+diff -uNr abduco-0.6/abduco.c abduco-0.6.mod/abduco.c
+--- abduco-0.6/abduco.c	2018-08-25 01:43:25.844405301 +0300
++++ abduco-0.6.mod/abduco.c	2018-08-25 01:43:56.691359408 +0300
+@@ -574,7 +574,7 @@
+ 	bool force = false;
+ 	char **cmd = NULL, action = '\0';
+ 
+-	char *default_cmd[4] = { "/bin/sh", "-c", getenv("ABDUCO_CMD"), NULL };
++	char *default_cmd[4] = { "@TERMUX_PREFIX@/bin/sh", "-c", getenv("ABDUCO_CMD"), NULL };
+ 	if (!default_cmd[2]) {
+ 		default_cmd[0] = ABDUCO_CMD;
+ 		default_cmd[1] = NULL;

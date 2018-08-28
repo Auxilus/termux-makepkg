@@ -1,0 +1,27 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="autoconf"
+PACKAGE_DESCRIPTION="Creator of shell scripts to configure source code packages"
+PACKAGE_HOMEPAGE="https://www.gnu.org/software/autoconf/autoconf.html"
+PACKAGE_VERSION="2.69"
+PACKAGE_HAS_NO_ARCH="true"
+PACKAGE_DEPENDS="m4, make, perl"
+
+PACKAGE_SOURCES=("https://mirrors.kernel.org/gnu/autoconf/autoconf-${PACKAGE_VERSION}.tar.xz"
+                 "General.pm.patch")
+
+PACKAGE_SOURCES_SHA256=('64ebcec9f8ac5b2487125a86a7760d2591ac9e1d3dbd59489633f9de62a57684'
+                        '341d094a349f06318dc0050754a8d92f873b1474241aa9d91e4801299a242d0e')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/General.pm.patch"
+    perl -p -i -e "s|/bin/sh|${TERMUX_PREFIX}/bin/sh|" lib/*/*.m4
+}
+
+post_package() {
+    cd "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}"
+    perl -p -i -e "s|/usr/bin/m4|${TERMUX_PREFIX}/bin/m4|" bin/*
+    perl -p -i -e "s|CONFIG_SHELL-/bin/sh|CONFIG_SHELL-${TERMUX_PREFIX}/bin/sh|" bin/autoconf
+}

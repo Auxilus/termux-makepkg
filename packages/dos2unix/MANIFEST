@@ -1,0 +1,25 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="dos2unix"
+PACKAGE_DESCRIPTION="Converts between DOS and Unix text files"
+PACKAGE_HOMEPAGE="https://waterlan.home.xs4all.nl/dos2unix.html"
+PACKAGE_VERSION="7.4.0"
+PACKAGE_DEPENDS="libandroid-support"
+PACKAGE_BUILD_DEPENDS="libandroid-support-dev"
+
+PACKAGE_SOURCES=("http://waterlan.home.xs4all.nl/dos2unix/dos2unix-${PACKAGE_VERSION}.tar.gz"
+                 "Makefile.patch")
+
+PACKAGE_SOURCES_SHA256=('bac765abdbd95cdd87a71989d4382c32cf3cbfeee2153f0086cb9cf18261048a'
+                        'b2e3efb3e35dbb7574f7b27748674d97bfa7a67cf1da2016e2b918f6bcc6e9af')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+	apply_patch "${PACKAGE_MANIFEST_DIR}/Makefile.patch"
+}
+
+check() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    make check
+}

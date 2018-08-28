@@ -1,0 +1,22 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="ack-grep"
+PACKAGE_DESCRIPTION="Tool like grep optimized for programmers"
+PACKAGE_HOMEPAGE="https://beyondgrep.com/"
+PACKAGE_VERSION="2.24"
+PACKAGE_HAS_NO_ARCH="true"
+PACKAGE_DEPENDS="coreutils, perl"
+
+PACKAGE_SOURCES=("https://beyondgrep.com/ack-${PACKAGE_VERSION}-single-file")
+PACKAGE_SOURCES_SHA256=('8361e5a2654bc575db27bfa40470c4182d74d51098d390944d98fe7cd5b20d49')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}"
+}
+
+package() {
+    install -Dm700 \
+            "${PACKAGE_MANIFEST_DIR}/ack-${PACKAGE_VERSION}-single-file" \
+            "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/ack"
+}

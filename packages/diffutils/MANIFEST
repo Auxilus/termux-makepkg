@@ -1,0 +1,11 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="diffutils"
+PACKAGE_DESCRIPTION="Programs (cmp, diff, diff3 and sdiff) related to finding differences between files"
+PACKAGE_HOMEPAGE="https://www.gnu.org/software/diffutils/"
+PACKAGE_VERSION="3.6"
+PACKAGE_EXTRA_CONFIGURE_ARGS="ac_cv_path_PR_PROGRAM=${TERMUX_PREFIX}/bin/pr"
+
+PACKAGE_SOURCES=("https://mirrors.kernel.org/gnu/diffutils/diffutils-${PACKAGE_VERSION}.tar.xz")
+PACKAGE_SOURCES_SHA256=('d621e8bdd4b573918c8145f7ae61817d1be9deb4c8d2328a65cea8e11d783bd6')

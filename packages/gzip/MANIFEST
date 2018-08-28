@@ -1,0 +1,32 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="gzip"
+PACKAGE_DESCRIPTION="Standard GNU file compression utilities"
+PACKAGE_HOMEPAGE="https://www.gnu.org/software/gzip/"
+PACKAGE_VERSION="1.9"
+PACKAGE_EXTRA_CONFIGURE_ARGS="ac_cv_path_GREP=grep"
+PACKAGE_DEPENDS="libandroid-support"
+PACKAGE_BUILD_DEPENDS="libandroid-support-dev"
+
+PACKAGE_SOURCES=("https://mirrors.kernel.org/gnu/gzip/gzip-${PACKAGE_VERSION}.tar.xz"
+                 "fix-gzexe.patch")
+
+PACKAGE_SOURCES_SHA256=('ae506144fc198bd8f81f1f4ad19ce63d5a2d65e42333255977cf1dcf1479089a'
+                        '96cbc46e98684dc57cb76c81ec9c9a707c58fe60a32e3083af5bdac7ff1c95e8')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+
+    apply_patch "${PACKAGE_MANIFEST_DIR}/fix-gzexe.patch"
+
+    if [ "${PACKAGE_TARGET_ARCHITECTURE}" = "i686" ]; then
+        # Avoid text relocations
+        export DEFS="NO_ASM"
+    fi
+}
+
+check() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    make check
+}

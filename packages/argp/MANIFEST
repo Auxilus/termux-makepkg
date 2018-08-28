@@ -1,0 +1,25 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="argp"
+PACKAGE_DESCRIPTION="Standalone version of arguments parsing functions from GLIBC"
+PACKAGE_HOMEPAGE="https://www.lysator.liu.se/~nisse/misc/"
+PACKAGE_VERSION="1.3"
+PACKAGE_NO_DEV_SPLIT="true"
+
+PACKAGE_SOURCES=("https://www.lysator.liu.se/~nisse/misc/argp-standalone-${PACKAGE_VERSION}.tar.gz"
+                 "argp-fmtstream.h.patch")
+
+PACKAGE_SOURCES_SHA256=('dec79694da1319acd2238ce95df57f3680fea2482096e483323fddf3d818d8be'
+                        '2f1f2aa27681bfd1ab8182a65266f958f52c3ab738a6aff3d89299704c154985')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}-standalone-${PACKAGE_VERSION}"
+    cd "${PACKAGE_SOURCE_DIR}" && apply_patch "${PACKAGE_MANIFEST_DIR}/argp-fmtstream.h.patch"
+}
+
+post_package() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    install -Dm600 libargp.a "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib/libargp.a"
+    install -Dm600 argp.h "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/include/argp.h"
+}

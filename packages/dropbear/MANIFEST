@@ -1,0 +1,70 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="dropbear"
+PACKAGE_DESCRIPTION="Small SSH server and client"
+PACKAGE_HOMEPAGE="https://matt.ucc.asn.au/dropbear/dropbear.html"
+PACKAGE_VERSION="2018.76"
+PACKAGE_DEPENDS="libutil"
+PACKAGE_BUILD_DEPENDS="libutil"
+PACKAGE_CONFLICTS="openssh"
+
+PACKAGE_EXTRA_CONFIGURE_ARGS="
+--disable-syslog
+--disable-utmp
+--disable-utmpx
+--disable-wtmp
+ac_cv_lib_crypt_crypt=no
+"
+
+# build a multi-call binary
+PACKAGE_EXTRA_MAKE_ARGS="MULTI=1 SCPPROGRESS=1"
+
+PACKAGE_SOURCES=("https://dropbear.nl/mirror/releases/dropbear-${PACKAGE_VERSION}.tar.bz2"
+                 "Makefile.in.patch"
+                 "cli-auth.c.patch"
+                 "common-session.c.patch"
+                 "compat.c.patch"
+                 "default_options.h.patch"
+                 "gensignkey.c.patch"
+                 "sshpty.c.patch"
+                 "svr-agentfwd.c.patch"
+                 "svr-auth.c.patch"
+                 "svr-chansession.c.patch"
+                 "sysoptions.h.patch")
+
+PACKAGE_SOURCES_SHA256=('f2fb9167eca8cf93456a5fc1d4faf709902a3ab70dd44e352f3acbc3ffdaea65'
+                        '54ad858e683ccbd5cbdf8facc18632e4ae1edd260a248582d608a98d1beb2aab'
+                        '31a832105c4faef04ad2e9d6700e1357058b026c43b8f7e1a924b9878fca9a68'
+                        '93a234ec97277003c893656aa14d3ae1b7c605aa56e7ecf585891a93d17ae146'
+                        '0b634c9812e9c10ecc0bdc0ab96b2eab500901d6584dc1fcdf43f664ccdd0962'
+                        '191511ab0d6a3847bf70298d90c433256f450001a2117451f45b40a355c97ba6'
+                        '315d01389efcc8823064fc2645f3fb577d4000ef77aab4f7c290891705820264'
+                        '13ed67137456a3541371a1cb578741022bfae5bc8204cb75f9374ca0671ff4b4'
+                        '6335cf8cd826abac15baf58f662d91c656b8cd0cd7276d244820153bbcba5dab'
+                        '751a110c389a70adf681d148c3a02e389048fe056a0c39ae9d44373f0307f277'
+                        '8f05ccca63aab0d194eee87c36bf48ca74c22b248133a1b6cbb4239b309d4cca'
+                        '358c463ef33d78eb1abb2fa9abe2f860520b7694b8f78fe8a308e8c4066c32d4')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    for patch in "${PACKAGE_MANIFEST_DIR}"/*.patch; do
+        apply_patch "${patch}"
+    done
+    unset patch
+}
+
+post_package() {
+    ln -sf "dropbearmulti" "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/ssh"
+
+    ## Post-installation *.deb script.
+    {
+        echo "#!${TERMUX_PREFIX}/bin/sh"
+        echo "mkdir -p ${TERMUX_PREFIX}/etc/dropbear"
+        echo "for a in rsa dss ecdsa; do"
+        echo "    KEYFILE=${TERMUX_PREFIX}/etc/dropbear/dropbear_\${a}_host_key"
+        echo "    test ! -f \${KEYFILE} && dropbearkey -t \${a} -f \${KEYFILE}"
+        echo "done"
+        echo "exit 0"
+    } > "${PACKAGE_INSTALL_DIR}/DEBIAN/postinst"
+}

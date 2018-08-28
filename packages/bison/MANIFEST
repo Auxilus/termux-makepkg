@@ -1,0 +1,18 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="bison"
+PACKAGE_DESCRIPTION="General-purpose parser generator"
+PACKAGE_HOMEPAGE="https://www.gnu.org/software/bison/"
+PACKAGE_VERSION="3.0.5"
+PACKAGE_DEPENDS="libandroid-support, m4"
+PACKAGE_BUILD_DEPENDS="libandroid-support-dev"
+PACKAGE_EXTRA_CONFIGURE_ARGS="M4=m4"
+
+PACKAGE_SOURCES=("https://mirrors.kernel.org/gnu/bison/bison-${PACKAGE_VERSION}.tar.xz")
+PACKAGE_SOURCES_SHA256=('075cef2e814642e30e10e8155e93022e4a91ca38a65aa1d5467d4e969f97f338')
+
+#check() {
+#    cd "${PACKAGE_SOURCE_DIR}"
+#    make check
+#}

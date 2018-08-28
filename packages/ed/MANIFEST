@@ -1,0 +1,19 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="ed"
+PACKAGE_DESCRIPTION="Classic UNIX line editor"
+PACKAGE_HOMEPAGE="https://www.gnu.org/software/ed/"
+PACKAGE_VERSION="1.14.2"
+
+PACKAGE_SOURCES=("https://mirrors.kernel.org/gnu/ed/ed-${PACKAGE_VERSION}.tar.lz")
+PACKAGE_SOURCES_SHA256=('f57962ba930d70d02fc71d6be5c5f2346b16992a455ab9c43be7061dec9810db')
+
+check() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    make check
+}
+
+post_package() {
+    rm -f "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/info/dir"
+}

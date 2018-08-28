@@ -1,0 +1,1865 @@
+#!/data/data/com.termux/files/usr/bin/bash
+##
+##  Package Builder script for Termux (Android Terminal Emulator).
+##
+##  Leonid Plyushch <leonid.plyushch@gmail.com> (C) 2018
+##
+##  This program is free software: you can redistribute it and/or modify
+##  it under the terms of the GNU General Public License as published by
+##  the Free Software Foundation, either version 3 of the License, or
+##  (at your option) any later version.
+##
+##  This program is distributed in the hope that it will be useful,
+##  but WITHOUT ANY WARRANTY; without even the implied warranty of
+##  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+##  GNU General Public License for more details.
+##
+##  You should have received a copy of the GNU General Public License
+##  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+##
+
+###############################################################################
+##
+##  BASIC INITIALIZATION
+##
+###############################################################################
+
+## Only Bash should be used for executing this script.
+if [ -z "${BASH}" ]; then
+    echo "[!] Error: this script should be executed only by Bash shell."
+    exit 1
+fi
+
+## Never run this script on desktop OS, only on Android.
+if [ ! -e "/system/app" ] && [ ! -e "/system/bin" ]; then
+    echo "[!] Error: this script should be executed only in Termux (Android Terminal Emulator)."
+    exit 1
+fi
+
+## Never run this script as root.
+if [ ${UID} -eq 0 ]; then
+    echo "[!] Error: you shouldn't run this script as root."
+    exit 1
+fi
+
+## Immediately exit on command errors.
+set -e -o pipefail -u
+
+## Don't do anything on SIGQUIT.
+trap '' QUIT
+
+## Default trap for SIGHUP/SIGINT/SIGTERM.
+trap 'exit 1' HUP INT TERM
+
+## Only owner should have read/write/execute access
+## on created files.
+umask 0077
+
+## Whether to run makepkg in debug mode.
+if [ -n "${TERMUX_MAKEPKG_DEBUG+x}" ]; then
+    set -x
+    PS4='${LINENO}: '
+fi
+
+## Name of makepkg's executable file.
+readonly PROGRAM_NAME=$(basename "${0}")
+
+## Version.
+declare -g -r PROGRAM_VERSION="v2.0-release"
+
+## Dependencies.
+declare -r -a MAKEPKG_DEPENDENCIES=(
+    'autoconf'
+    'automake'
+    'bzip2'
+    'coreutils'
+    'clang'
+    'curl'
+    'diffutils'
+    'file'
+    'findutils'
+    'gawk'
+    'grep'
+    'gzip'
+    'libandroid-support-dev'
+    'libtool'
+    'lzip'
+    'lzop'
+    'm4'
+    'make'
+    'patch'
+    'perl'
+    'pkg-config'
+    'sed'
+    'tar'
+    'termux-elf-cleaner'
+    'unzip'
+    'util-linux'
+    'xz-utils'
+)
+
+## A Termux prefix - path where everything is installed.
+declare -g -r TERMUX_PREFIX="/data/data/com.termux/files/usr"
+
+## A Termux home directory.
+declare -g -r TERMUX_HOME="/data/data/com.termux/files/home"
+
+## Force reset variable `PATH`.
+declare -g -x PATH="${TERMUX_PREFIX}/bin:${TERMUX_PREFIX}/bin/applets"
+
+## Force reset variable `LD_LIBRARY_PATH`.
+declare -g -x LD_LIBRARY_PATH="${TERMUX_PREFIX}/lib"
+
+## Force reset variable `TMPDIR`.
+declare -g -x TMPDIR="${TERMUX_PREFIX}/tmp"
+
+## Directory where all stuff will be stored.
+declare -g -r PACKAGE_BUILDER_TOP_DIR="${HOME}/.cache/termux-makepkg"
+
+## Directory where current manifest is located.
+declare -g -r PACKAGE_MANIFEST_DIR="${PWD}"
+
+## Default makepkg action.
+declare -g MAKEPKG_ACTION="build_package"
+
+## Whether to enable debug options for compilation.
+declare -g MAKEPKG_ENABLE_DEBUG_BUILD="false"
+
+## Whether to force download files from URLs
+## even if they available locally.
+declare -g MAKEPKG_FORCE_DOWNLOAD_SOURCES="false"
+
+## Whether to disable function `check()` in manifest.
+declare -g MAKEPKG_DISABLE_CHECK_FN="false"
+
+## Whether to disable colors on informational messages.
+declare -g MAKEPKG_DISABLE_COLORS="false"
+
+## Whether to suppress standard output.
+declare -g MAKEPKG_DISABLE_STDOUT="false"
+
+## Whether to install built package.
+declare -g MAKEPKG_INSTALL_BUILT_PACKAGE="false"
+
+## Temporary variable for action `create_new_package`.
+declare -g MAKEPKG_NEW_PACKAGE_NAME=""
+
+## Print message and update Terminal title.
+title_mesg() {
+    echo -ne "\\e]0;${1}\\a" >&2
+
+    if ${MAKEPKG_DISABLE_COLORS}; then
+        echo -e "\\e[2K\\r===== ${1}" >&2
+    else
+        echo -e "\\e[2K\\r\\e[1;35m===== \\e[1;97m${1}\\e[0m" >&2
+    fi
+}
+
+## Print informational message.
+info_mesg() {
+    if ${MAKEPKG_DISABLE_COLORS}; then
+        echo -e "\\e[2K\\r[*] ${1}" >&2
+    else
+        echo -e "\\e[2K\\r\\e[1;32m[\\e[1;97m*\\e[1;32m] \\e[1;36m${1}\\e[0m" >&2
+    fi
+}
+
+## Print error message.
+error_mesg() {
+    if ${MAKEPKG_DISABLE_COLORS}; then
+        echo -e "\\e[2K\\r[!] ${1}" >&2
+    else
+        echo -e "\\e[2K\\r\\e[1;32m[\\e[1;31m!\\e[1;32m] \\e[1;36m${1}\\e[0m" >&2
+    fi
+}
+
+## Clear terminal title.
+reset_title() {
+    echo -ne "\\e]0;\\a" >&2
+}
+
+## Function for applying patches.
+##
+##  Usage: apply_patch 'PATH TO PATCH FILE'
+##
+## It is recommended to use this function in manifest for applying
+## patches instead of direct calls to `patch`. It also automatically
+## replaces '@TERMUX_PREFIX@' and @TERMUX_HOME@ with according values.
+apply_patch() {
+    if [ -n "${1+x}" ]; then
+        if ! grep -qP '^/.*' <<< "${1}"; then
+            error_mesg "apply_patch(): argument should be an absolute path to patch file."
+            exit 1
+        fi
+
+        if [ ! -e "${1}" ]; then
+            error_mesg "apply_patch(): specified file '${1}' is not exist."
+            exit 1
+        fi
+
+        if [ ! -f "${1}" ]; then
+            error_mesg "apply_patch(): specified file '${1}' is not a regular file."
+            exit 1
+        fi
+
+        sed "s%\\@TERMUX_PREFIX\\@%${TERMUX_PREFIX}%g" "${1}" | \
+            sed "s%\\@TERMUX_HOME\\@%${TERMUX_HOME}%g" | \
+            patch -p1
+    else
+        error_mesg "Error: apply_patch() should be called with argument."
+        exit 1
+    fi
+}
+
+## Download file from URL to destination.
+##
+##  Usage: download_file 'URL' 'DESTINATION PATH'
+##
+## For downloading files in manifest, it is recommended to use this
+## function instead of direct calls of file download tools.
+download_file() {
+    if [ -z "${1+x}" ]; then
+        error_mesg "download_file(): no URL specified."
+        exit 1
+    fi
+
+    if [ -n "${2+x}" ]; then
+        if ! grep -qP '^/.*' <<< "${2}"; then
+            error_mesg "download_file(): destination path should be absolute."
+            exit 1
+        fi
+    else
+        error_mesg "download_file(): no destination path specified."
+        exit 1
+    fi
+
+    local source_url=${1}
+    local destination_path=${2}
+
+    ## Destination path shouldn't be a directory.
+    if [ -d "${destination_path}" ]; then
+        error_mesg "download_file(): destination path '${destination_path}' is a directory."
+        exit 1
+    fi
+
+    ## Destination path shouln't be a special file.
+    if [ -e "${destination_path}" ] && [ ! -f "${destination_path}" ]; then
+        error_mesg "download_file(): destination path '${destination_path}' is not a regular file."
+        exit 1
+    fi
+
+    ## Use `curl` to download file.
+    if curl \
+            --progress \
+            --location \
+            --fail \
+            --retry 5 \
+            --output "${destination_path}" \
+            "${source_url}"; then
+        ## Remove curl's progress bar once download finished successfully.
+        echo -ne "\\e[1A\\e[2K\\r" >&2
+    else
+        rm -f "${destination_path}"
+        error_mesg "Error: failed to download '${source_url}'."
+        exit 1
+    fi
+}
+
+## Fix permissions in specified directory to ensure that
+## we have read-write access.
+##
+##  Usage: fix_permissions 'PATH TO DIRECTORY'
+##
+## Since this function is used in `unpack()` stage, in most cases
+## you shouldn't use it manually.
+fix_permissions() {
+    if [ -n "${1+x}" ]; then
+        if ! grep -qP '^/.*' <<< "${1}"; then
+            error_mesg "fix_permissions(): argument should be an absolute path to directory."
+            exit 1
+        fi
+
+        if [ ! -e "${1}" ]; then
+            error_mesg "fix_permissions(): specified file '${1}' is not exist."
+            exit 1
+        fi
+
+        if [ ! -d "${1}" ]; then
+            error_mesg "fix_permissions(): specified file '${1}' is not a directory."
+            exit 1
+        fi
+
+        find "${1}" -type d -print0 | xargs -r -0 chmod 700
+        find "${1}" -type f -executable -print0 | xargs -r -0 chmod 700
+        find "${1}" -type f ! -executable -print0 | xargs -r -0 chmod 600
+    else
+        error_mesg "Error: fix_permissions() is called without argument."
+        exit 1
+    fi
+}
+
+## Install dependencies if needed.
+if ! dpkg --status "${MAKEPKG_DEPENDENCIES[@]}" > /dev/null 2>&1; then
+    echo "[*] Installing dependencies..."
+    apt update && apt install -y "${MAKEPKG_DEPENDENCIES[@]}"
+    hash -r
+fi
+
+###############################################################################
+##
+##  READ MANIFEST FILE
+##
+###############################################################################
+
+read_manifest() {
+    ## Basic package metadata.
+    declare -g PACKAGE_NAME=""
+    declare -g PACKAGE_DESCRIPTION="FIXME: add description"
+    declare -g PACKAGE_HOMEPAGE="FIXME: add homepage"
+    declare -g PACKAGE_VERSION=""
+    declare -g PACKAGE_REVISION=""
+    declare -g PACKAGE_ESSENTIAL=""
+    declare -g PACKAGE_MAINTAINER="**UNMAINTAINED**"
+    declare -g PACKAGE_DEPENDS=""
+    declare -g PACKAGE_RECOMMENDS=""
+    declare -g PACKAGE_SUGGESTS=""
+    declare -g PACKAGE_BREAKS=""
+    declare -g PACKAGE_CONFLICTS=""
+    declare -g PACKAGE_PROVIDES=""
+    declare -g PACKAGE_REPLACES=""
+
+    ## Specially for *-dev packages.
+    declare -g PACKAGE_DEV_DEPENDS=""
+
+    ## Advanced package configuration.
+    declare -g PACKAGE_EXTRA_CONFIGURE_ARGS=""
+    declare -g PACKAGE_EXTRA_MAKE_ARGS=""
+    declare -g PACKAGE_HAS_NO_ARCH=""
+    declare -g PACKAGE_BUILD_DEPENDS=""
+    declare -g PACKAGE_NO_DEV_SPLIT=""
+    declare -g PACKAGE_SOURCE_DIR=""
+    declare -g -a PACKAGE_CONFIG_FILES=("")
+    declare -g -a PACKAGE_SOURCES=("")
+    declare -g -a PACKAGE_SOURCES_SHA256=("")
+
+    ## Reading manifest file. Note that the file name characters should
+    ## be uppercase.
+    if [ -e "${PACKAGE_MANIFEST_DIR}/MANIFEST" ]; then
+        if ! bash -n "${PACKAGE_MANIFEST_DIR}/MANIFEST"; then
+            error_mesg "Error: your manifest file contains syntax errors. Please, fix them."
+            exit 1
+        else
+            # shellcheck source=/dev/null
+            source "${PACKAGE_MANIFEST_DIR}/MANIFEST"
+        fi
+    else
+        error_mesg "Error: cannot find file 'MANIFEST' in current directory."
+        exit 1
+    fi
+
+    ## Check if package name field.
+    if [ -n "${PACKAGE_NAME}" ]; then
+        if ! grep -qP '^[a-z0-9]+((-[a-z0-9]+)+)?$' <<< "${PACKAGE_NAME}"; then
+            error_mesg "Manifest error: invalid package name specified."
+            error_mesg "Package name can consist only from lowercase alphanumeric characters, numbers and dash. The dash character should not be placed to the beginning or ending of the package name."
+            exit 1
+        fi
+    else
+        error_mesg "Manifest error: variable 'PACKAGE_NAME' is not set."
+        exit 1
+    fi
+
+    ## Check package version field.
+    if [ -n "${PACKAGE_VERSION}" ]; then
+        if ! grep -qP '^[a-zA-Z0-9]+((\.[a-zA-Z0-9]+)+)?$' <<< "${PACKAGE_VERSION}"; then
+            error_mesg "Manifest error: invalid package version specified."
+            error_mesg "Package version can consist only from alphanumeric characters and dot. The dot character should not be placed to the beginning or ending of the package version."
+            exit 1
+        fi
+    else
+        error_mesg "Manifest error: variable 'PACKAGE_VERSION' is not set."
+        exit 1
+    fi
+
+    ## Check package revision set.
+    ## Create variable `PACKAGE_FULL_VERSION` which is actually used
+    ## for setting version field in *.deb control file.
+    if [ -n "${PACKAGE_REVISION}" ]; then
+        if ! grep -qP '^\d+$' <<< "${PACKAGE_REVISION}"; then
+            error_mesg "Manifest error: invalid package revision specified."
+            error_mesg "Package revision can consist only from digits."
+            exit 1
+        fi
+        declare -g -r PACKAGE_FULL_VERSION="${PACKAGE_VERSION}-${PACKAGE_REVISION}"
+    else
+        declare -g -r PACKAGE_FULL_VERSION="${PACKAGE_VERSION}"
+    fi
+
+    ## Check list of package sources.
+    if [ -n "${PACKAGE_SOURCES[*]}" ]; then
+        for i in $(seq 0 $((${#PACKAGE_SOURCES[@]} - 1))); do
+            ## Path shouldn't be empty.
+            if [ -z "${PACKAGE_SOURCES[i]}" ]; then
+                error_mesg "Manifest error: array element 'PACKAGE_SOURCES[${i}]' is empty."
+                exit 1
+            fi
+
+            ## Path shouldn't be set to './' or '.'.
+            if grep -qP '^\.$' <<< "${PACKAGE_SOURCES[i]}"; then
+                error_mesg "Manifest error: array element 'PACKAGE_SOURCES[${i}]' contains invalid path '.'."
+                exit 1
+            fi
+            if grep -qP '^\./$' <<< "${PACKAGE_SOURCES[i]}"; then
+                error_mesg "Manifest error: array element 'PACKAGE_SOURCES[${i}]' contains invalid path './'."
+                exit 1
+            fi
+
+            ## Path shouldn't be absolute.
+            if grep -qP '^/.*' <<< "${PACKAGE_SOURCES[i]}"; then
+                error_mesg "Manifest error: array element 'PACKAGE_SOURCES[${i}]' contains absolute path."
+                exit 1
+            fi
+        done
+        unset i
+    else
+        error_mesg "Manifest error: array 'PACKAGE_SOURCES' should not be empty."
+        exit 1
+    fi
+
+    ## Check that names of configuration files are correct.
+    if [ -n "${PACKAGE_CONFIG_FILES[*]}" ]; then
+        for i in $(seq 0 $((${#PACKAGE_CONFIG_FILES[@]} - 1))); do
+            if grep -q '^/' <<< "${PACKAGE_CONFIG_FILES[i]}"; then
+                error_mesg "Manifest error: array element 'PACKAGE_CONFIG_FILES[${i}]' contains absolute path."
+                exit 1
+            fi
+        done
+        unset i
+    fi
+
+    ## Set target architecture.
+    if [ -n "${PACKAGE_HAS_NO_ARCH}" ] && [ "${PACKAGE_HAS_NO_ARCH}" != "false" ]; then
+        PACKAGE_TARGET_ARCHITECTURE="all"
+    else
+        PACKAGE_TARGET_ARCHITECTURE=$(uname -m)
+
+        ## Fix for target architecture `armv7`.
+        if [[ ${PACKAGE_TARGET_ARCHITECTURE} = armv7* ]]; then
+            PACKAGE_TARGET_ARCHITECTURE="arm"
+        fi
+    fi
+
+    ## Set default path to directory where source code will be unpacked.
+    ## Note that custom path should be set in `prepare()` step only.
+    if [ -z "${PACKAGE_SOURCE_DIR}" ]; then
+        PACKAGE_SOURCE_DIR="${PACKAGE_BUILDER_TOP_DIR}/${PACKAGE_NAME}/${PACKAGE_NAME}-${PACKAGE_VERSION}"
+    fi
+
+    ## Variables that shouldn't be changed after setting up.
+    readonly PACKAGE_BREAKS
+    readonly PACKAGE_BUILD_DEPENDS
+    readonly PACKAGE_CONFIG_FILES
+    readonly PACKAGE_CONFLICTS
+    readonly PACKAGE_DEPENDS
+    readonly PACKAGE_DESCRIPTION
+    readonly PACKAGE_DEV_DEPENDS
+    readonly PACKAGE_ESSENTIAL
+    readonly PACKAGE_HAS_NO_ARCH
+    readonly PACKAGE_HOMEPAGE
+    readonly PACKAGE_MAINTAINER
+    readonly PACKAGE_NAME
+    readonly PACKAGE_NO_DEV_SPLIT
+    readonly PACKAGE_PROVIDES
+    readonly PACKAGE_RECOMMENDS
+    readonly PACKAGE_REPLACES
+    readonly PACKAGE_REVISION
+    readonly PACKAGE_SOURCES_SHA256
+    readonly PACKAGE_SOURCES
+    readonly PACKAGE_SUGGESTS
+    readonly PACKAGE_TARGET_ARCHITECTURE
+    readonly PACKAGE_VERSION
+
+    ## Each package should have own directory.
+    declare -g -r PACKAGE_BUILD_DIR="${PACKAGE_BUILDER_TOP_DIR}/${PACKAGE_NAME}"
+
+    ## Each package should have own installation directory.
+    declare -g -r PACKAGE_INSTALL_DIR="${PACKAGE_BUILD_DIR}/installation"
+}
+
+###############################################################################
+##
+##  ACTION: BUILD BINARY *.DEB PACKAGE
+##
+###############################################################################
+##
+## Execute steps needed to build package. The build procedure is executed in
+## the following order:
+##
+##  1. Read manifest file by calling function `read_manifest`.
+##
+##  2. Try to create lock file. If failed - show error and exit.
+##
+##  3. Setup variables for build environment.
+##
+##  4. If library for `libtermux-exec` is not found in LD_PRELOAD, show
+##     warning.
+##
+##  5. Install build-time dependencies specified in `PACKAGE_BUILD_DEPENDS`.
+##
+##  6. Prepare build directory.
+##
+##  7. Download source files. This is done by either executing function
+##     `fetch()` in manifest or performing generic steps for downloading
+##     content from URLs specified in `PACKAGE_SOURCES` if file is not
+##     found in manifest directory or `--download` option was specified
+##     when running makepkg.
+##
+##  8. Perform integrity checking and unpack files to build directory.
+##     This is done by either executing function `unpack()` in manifest
+##     or performing generic steps for unpacking *.tar* or *.zip archives.
+##     If makepkg failed to determine type of the file, then it will be
+##     left in manifest directory.
+##
+##  9. Find and replace all config.sub/config.guess scripts by updated
+##     variant.
+##
+##  10. Execute function `prepare()`. Only if it was defined in manifest.
+##
+##  11. Perform build configuration. This is done by either executing
+##      function `configure()` in manifest or executing GNU configuration
+##      script with some arguments specified by makepkg.
+##
+##  12. Compiling source code. This is done by either executing function
+##      `build()` in manifest or just running `make` with some generic
+##      arguments.
+##
+##  13. Execute function `check()`. Only if it was defined in manifest and
+##      option `--nocheck` is not specified.
+##
+##  14. Perform installation to *.deb build directory. This is done by
+##      either executing function `package()` in manifest or performing
+##      some generic steps like `make install`.
+##
+##  15. Execute function `post_package()`. Only if it was defined in
+##      manifest.
+##
+##  16. Creating *.deb package. If development files found (e.g. headers),
+##      a development package (${PACKAGE_NAME}-dev) will be created too.
+##
+##  17. Performing cleanup.
+##
+
+build_package() {
+    read_manifest
+
+    ## Ensure that build dir is exists so it will be possible to create
+    ## lock file.
+    mkdir -p "${PACKAGE_BUILD_DIR}"
+
+    ## Try to create lock to prevent multiple builds of same package.
+    exec {BUILD_LOCK_FILE}>"${PACKAGE_BUILD_DIR}/lock"
+    if ! flock -n "${BUILD_LOCK_FILE}"; then
+        error_mesg "Error: another build process for package '${PACKAGE_NAME}' is running."
+        exit 1
+    fi
+
+    ## Check source checksum list.
+    if [ -n "${PACKAGE_SOURCES_SHA256[*]}" ]; then
+        if [ ${#PACKAGE_SOURCES[@]} != ${#PACKAGE_SOURCES_SHA256[@]} ]; then
+            error_mesg "Manifest error: lengths of arrays 'PACKAGE_SOURCES' and 'PACKAGE_SOURCES_SHA256' are not equal."
+            error_mesg "You can use '${PROGRAM_NAME} -g' to obtain correct value for 'PACKAGE_SOURCES_SHA256'."
+            exit 1
+        fi
+    else
+        error_mesg "Manifest error: variable 'PACKAGE_SOURCES_SHA256' is not set."
+        error_mesg "You can use '${PROGRAM_NAME} -g' to generate it."
+        exit 1
+    fi
+
+    ## Setup build variables (mostly used by configuration scripts).
+    declare -g -x AS="clang"
+    declare -g -x AR="ar"
+    declare -g -x CC="clang"
+    declare -g -x CFLAGS=""
+    declare -g -x CXXFLAGS=""
+    declare -g -x CONFIG_SHELL="${TERMUX_PREFIX}/bin/bash"
+    declare -g -x CPP="cpp"
+    declare -g -x CPPFLAGS="-I${TERMUX_PREFIX}"
+    declare -g -x CXX="clang++"
+    declare -g -x LD="ld"
+    declare -g -x LDFLAGS="-L${TERMUX_PREFIX}/lib"
+    declare -g -x OBJDUMP="objdump"
+    declare -g -x PKG_CONFIG="pkg-config"
+    declare -g -x RANLIB="ranlib"
+    declare -g -x READELF="readelf"
+    declare -g -x STRIP="strip"
+    declare -g -x TERMUX_ELF_CLEANER="termux-elf-cleaner"
+
+    ## Don't do optimization on debug builds.
+    if ${MAKEPKG_ENABLE_DEBUG_BUILD}; then
+        CFLAGS+=" -g3 -O0"
+    else
+        CFLAGS+=" -Os"
+    fi
+
+    ## Special flags for ARM and i686.
+    if [ "${PACKAGE_TARGET_ARCHITECTURE}" = "arm" ]; then
+        CFLAGS+=" -march=armv7-a -mfpu=neon -mfloat-abi=softfp -mthumb -fno-integrated-as"
+        LDFLAGS+=" -march=armv7-a"
+    elif [ "${PACKAGE_TARGET_ARCHITECTURE}" = "i686" ]; then
+        CFLAGS+=" -march=i686 -msse3 -mstackrealign -mfpmath=sse"
+    fi
+
+    ## Handle dependency `libandroid-support` in special way.
+    if [ "${PACKAGE_DEPENDS}" != "${PACKAGE_DEPENDS/libandroid-support/}" ]; then
+        CPPFLAGS+=" -isystem ${TERMUX_PREFIX}/include/libandroid-support"
+        LDFLAGS+=" -landroid-support"
+    fi
+
+    ## Usually, C++ compilation flags should be same as for C.
+    CXXFLAGS="${CFLAGS}"
+
+    ## Special variables that may be used by `./configure` script.
+    declare -g -x ac_cv_func_getpwent=no
+    declare -g -x ac_cv_func_getpwnam=no
+    declare -g -x ac_cv_func_getpwuid=no
+    declare -g -x ac_cv_func_sigsetmask=no
+    declare -g AVOID_GNULIB=""
+    AVOID_GNULIB+=" ac_cv_func_calloc_0_nonnull=yes"
+    AVOID_GNULIB+=" ac_cv_func_chown_works=yes"
+    AVOID_GNULIB+=" ac_cv_func_getgroups_works=yes"
+    AVOID_GNULIB+=" ac_cv_func_malloc_0_nonnull=yes"
+    AVOID_GNULIB+=" ac_cv_func_realloc_0_nonnull=yes"
+    AVOID_GNULIB+=" am_cv_func_working_getline=yes"
+    AVOID_GNULIB+=" gl_cv_func_dup2_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_fcntl_f_dupfd_cloexec=yes"
+    AVOID_GNULIB+=" gl_cv_func_fcntl_f_dupfd_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_fnmatch_posix=yes"
+    AVOID_GNULIB+=" gl_cv_func_getcwd_abort_bug=no"
+    AVOID_GNULIB+=" gl_cv_func_getcwd_null=yes"
+    AVOID_GNULIB+=" gl_cv_func_getcwd_path_max=yes"
+    AVOID_GNULIB+=" gl_cv_func_getcwd_posix_signature=yes"
+    AVOID_GNULIB+=" gl_cv_func_gettimeofday_clobber=no"
+    AVOID_GNULIB+=" gl_cv_func_gettimeofday_posix_signature=yes"
+    AVOID_GNULIB+=" gl_cv_func_link_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_lstat_dereferences_slashed_symlink=yes"
+    AVOID_GNULIB+=" gl_cv_func_malloc_0_nonnull=yes"
+    AVOID_GNULIB+=" gl_cv_func_memchr_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_mkdir_trailing_dot_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_mkdir_trailing_slash_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_mkfifo_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_mknod_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_realpath_works=yes"
+    AVOID_GNULIB+=" gl_cv_func_select_detects_ebadf=yes"
+    AVOID_GNULIB+=" gl_cv_func_snprintf_posix=yes"
+
+    ## Show warning if `libtermux-exec` is missing.
+    if [ -n "${LD_PRELOAD+x}" ]; then
+        if [ "${LD_PRELOAD}" = "${LD_PRELOAD/libtermux-exec.so/}" ]; then
+            error_mesg "Warning: library 'libtermux-exec.so' is not found in your 'LD_PRELOAD' so your builds will likely fail."
+        fi
+    else
+        error_mesg "Warning: library 'libtermux-exec.so' is not found in your 'LD_PRELOAD' so your builds will likely fail."
+    fi
+
+    title_mesg "Building package '${PACKAGE_NAME}'"
+
+    ## Install build time dependencies specified in `PACKAGE_BUILD_DEPENDS`.
+    if [ -n "${PACKAGE_BUILD_DEPENDS}" ]; then
+        local install_needed=""
+
+        for dep in ${PACKAGE_BUILD_DEPENDS//,/ }; do
+            if ! dpkg --status "${dep}" > /dev/null 2>&1; then
+                install_needed+=" ${dep}"
+            fi
+        done
+        unset dep
+
+        if [ -n "${install_needed}" ]; then
+            info_mesg "Installing build-time dependencies..."
+            # shellcheck disable=SC2086
+            apt update && apt install -y ${install_needed}
+            hash -r
+        fi
+        unset install_needed
+    fi
+
+    ## Remove old files from build dir but do not touch lock file.
+    if [ -d "${PACKAGE_BUILD_DIR}" ]; then
+        find "${PACKAGE_BUILD_DIR}" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            ! -iname "lock" \
+            -exec rm -rf '{}' \;
+    fi
+
+    ## Creating necessary directories:
+    mkdir -p "${PACKAGE_INSTALL_DIR}/DEBIAN"
+    mkdir -p "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}"
+
+    ##
+    ## fetch(): download source files.
+    ##
+    ## By default, it will only download files from URLs specified in
+    ## field `PACKAGE_SOURCES`.
+    ##
+    ## Note that files will not be downloaded if they already exist. This
+    ## can be overridden by specifying `--download` option when running makepkg.
+    ##
+    info_mesg "Fetching sources..."
+    cd "${PACKAGE_MANIFEST_DIR}"
+    if declare -F fetch > /dev/null 2>&1; then
+        fetch
+    else
+        for i in $(seq 0 $((${#PACKAGE_SOURCES[@]} - 1))); do
+            if grep -qPi '^(file|ftp|http(s)?)://.+' <<< "${PACKAGE_SOURCES[i]}"; then
+                local file_name
+                file_name=$(basename "${PACKAGE_SOURCES[i]}")
+
+                ## Destination path shouldn't be a directory.
+                if [ -d "${PACKAGE_MANIFEST_DIR}/${file_name}" ]; then
+                    error_mesg "Error: destination file '${PACKAGE_MANIFEST_DIR}/${file_name}' is a directory."
+                    error_mesg "Cannot download '${PACKAGE_SOURCES[i]}'."
+                    exit 1
+                fi
+
+                ## Destination path shouln't be a special file.
+                if [ -e "${PACKAGE_MANIFEST_DIR}/${file_name}" ] && [ ! -f "${PACKAGE_MANIFEST_DIR}/${file_name}" ]; then
+                    error_mesg "Error: destination file '${PACKAGE_MANIFEST_DIR}/${file_name}' is not a regular file."
+                    error_mesg "Cannot download '${PACKAGE_SOURCES[i]}'."
+                    exit 1
+                fi
+
+                if ${MAKEPKG_FORCE_DOWNLOAD_SOURCES}; then
+                    rm -f "${PACKAGE_MANIFEST_DIR}/${file_name}"
+                fi
+
+                if [ ! -e "${PACKAGE_MANIFEST_DIR}/${file_name}" ]; then
+                    info_mesg " * Downloading '${PACKAGE_SOURCES[i]}'"
+                    download_file \
+                        "${PACKAGE_SOURCES[i]}" \
+                        "${PACKAGE_MANIFEST_DIR}/${file_name}"
+                else
+                    info_mesg " * Skipping download of '${PACKAGE_SOURCES[i]}'"
+                fi
+
+                unset file_name
+            fi
+        done
+        unset i
+    fi
+
+    ##
+    ## unpack(): unpack files to build directory.
+    ##
+    ## By default, it will perform integrity checking and then unpack
+    ## *.tar* and *.zip archives to build directory. If file has unknown
+    ## type, it will be left in manifest directory.
+    ##
+    info_mesg "Unpacking source files..."
+    cd "${PACKAGE_BUILD_DIR}"
+    if declare -F unpack > /dev/null 2>&1; then
+        unpack
+    else
+        for i in $(seq 0 $((${#PACKAGE_SOURCES[@]} - 1))); do
+            local file_name file_path
+            file_name=$(basename "${PACKAGE_SOURCES[i]}")
+            file_path="${PACKAGE_MANIFEST_DIR}/${file_name}"
+
+            info_mesg " * Verifying SHA-256 for '${file_name}'"
+            local actual_checksum
+            actual_checksum=$(sha256sum "${file_path}" | awk '{ print $1 }')
+            if [ "${PACKAGE_SOURCES_SHA256[i]}" != "${actual_checksum}" ]; then
+                error_mesg "Wrong checksum for '$(basename "${PACKAGE_SOURCES[i]}")'."
+                echo
+                echo "Expected: ${PACKAGE_SOURCES_SHA256[i]}"
+                echo "Actual:   ${actual_checksum}"
+                echo
+                error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
+                exit 1
+            fi
+            unset actual_checksum
+
+            ## Handle file in a specific way depending on it's type.
+            ## TODO: handle more archive types ?
+            if grep -qP '^.+\.tar(.(gz|bz2|lz|lzo|xz))?$' <<< "${file_name}" || \
+                grep -qP '^.+\.t(gz|bz2|lz|lzo|xz)$' <<< "${file_name}"; then
+                ## Unpacking TAR archive.
+                info_mesg " * Extracting '${file_name}'"
+                tar xf "${file_path}" -C "${PACKAGE_BUILD_DIR}"
+            elif grep -P '^.+\.zip$' <<< "${file_name}"; then
+                ## Unpacking ZIP archive.
+                info_mesg " * Extracting '${file_name}'"
+                unzip -q -o -d "${PACKAGE_BUILD_DIR}" "${file_path}"
+            else
+                ## Don't unpack files with unknown type. Just left
+                ## them for manual handling.
+                info_mesg " * Skipping extraction of '${file_name}'"
+            fi
+
+            unset file_name
+            unset file_path
+        done
+        unset i
+    fi
+
+    ## Find and replace config.{sub,guess} scripts.
+    {
+        find "${PACKAGE_BUILD_DIR}" -name config.sub -exec chmod u+w '{}' \; -exec cp "${TERMUX_PREFIX}/share/libtool/build-aux/config.sub" '{}' \;
+        find "${PACKAGE_BUILD_DIR}" -name config.guess -exec chmod u+w '{}' \; -exec cp "${TERMUX_PREFIX}/share/libtool/build-aux/config.guess" '{}' \;
+    } > /dev/null 2>&1
+
+    ## Fix permissions to make sure that we can read/write/execute
+    ## files.
+    info_mesg "Fixing permissions in build directory..."
+    fix_permissions "${PACKAGE_BUILD_DIR}"
+
+    ##
+    ## prepare(): do preparation steps like patching.
+    ##
+    ## ** OPTIONAL **
+    ##
+    ## By default, this function does nothing.
+    ##
+    if declare -F prepare > /dev/null 2>&1; then
+        info_mesg "Preparing..."
+        cd "${PACKAGE_BUILD_DIR}"
+        prepare
+    fi
+
+    ## Check if `PACKAGE_SOURCE_DIR` is valid.
+    if [ ! -e "${PACKAGE_SOURCE_DIR}" ]; then
+        error_mesg "Error: source code directory '${PACKAGE_SOURCE_DIR}' is not exist."
+        error_mesg "Please, set correct 'PACKAGE_SOURCE_DIR' by setting it in function 'prepare()' in manifest file."
+        exit 1
+    fi
+
+    ##
+    ## configure(): run configuration scripts.
+    ##
+    ## By default, this function executes script `./configure` if it was found.
+    ##
+    if declare -F configure > /dev/null 2>&1; then
+        info_mesg "Configuring..."
+        cd "${PACKAGE_BUILD_DIR}"
+        configure
+    else
+        (
+            if [ -e "${PACKAGE_SOURCE_DIR}/configure" ]; then
+                info_mesg "Configuring..."
+                cd "${PACKAGE_SOURCE_DIR}"
+                # shellcheck disable=SC2086
+                env ${AVOID_GNULIB} bash ./configure \
+                    --prefix="${TERMUX_PREFIX}" \
+                    --disable-dependency-tracking \
+                    --disable-rpath \
+                    --disable-rpath-hack \
+                    --disable-nls \
+                    --enable-shared \
+                    --disable-static \
+                    --libexecdir="${TERMUX_PREFIX}/libexec" \
+                    ${PACKAGE_EXTRA_CONFIGURE_ARGS}
+            fi
+        )
+    fi
+
+    ##
+    ## build(): build source code.
+    ##
+    ## By default, it only executes `make -j $(nproc)`.
+    ##
+    if declare -F build > /dev/null 2>&1; then
+        info_mesg "Building..."
+        cd "${PACKAGE_BUILD_DIR}"
+        build
+    else
+        (
+            if [ -e "${PACKAGE_SOURCE_DIR}/makefile" ] || \
+                [ -e "${PACKAGE_SOURCE_DIR}/Makefile" ] || \
+                [ -e "${PACKAGE_SOURCE_DIR}/GNUmakefile" ]; then
+                info_mesg "Building..."
+                cd "${PACKAGE_SOURCE_DIR}"
+                make -j "$(nproc)" ${PACKAGE_EXTRA_MAKE_ARGS}
+            fi
+        )
+    fi
+
+    ##
+    ## check(): exampine compiled stuff before packaging.
+    ##
+    ## ** OPTIONAL **
+    ##
+    ## By default, this function does nothing. This function can
+    ## be force-disabled by option `--nocheck`.
+    ##
+    if ! ${MAKEPKG_DISABLE_CHECK_FN}; then
+        if declare -F check > /dev/null 2>&1; then
+            info_mesg "Executing tests..."
+            cd "${PACKAGE_BUILD_DIR}"
+            check
+        fi
+    fi
+
+    ##
+    ## package(): install necessary files to directory which later will be
+    ## turned into *.deb archive.
+    ##
+    ## By default, it only executes `make install DESTDIR=${PACKAGE_INSTALL_DIR}`.
+    ##
+    info_mesg "Installing..."
+    if declare -F package > /dev/null 2>&1; then
+        cd "${PACKAGE_BUILD_DIR}"
+        package
+    else
+        (
+        if [ -e "${PACKAGE_SOURCE_DIR}/makefile" ] || \
+            [ -e "${PACKAGE_SOURCE_DIR}/Makefile" ] || \
+            [ -e "${PACKAGE_SOURCE_DIR}/GNUmakefile" ]; then
+                cd "${PACKAGE_SOURCE_DIR}"
+                make install DESTDIR="${PACKAGE_INSTALL_DIR}" ${PACKAGE_EXTRA_MAKE_ARGS}
+            else
+                error_mesg "Cannot perform installation because no makefile found."
+                exit 1
+            fi
+        )
+    fi
+
+    ##
+    ## post_package(): do additional steps on installed files.
+    ##
+    ## ** OPTIONAL **
+    ##
+    ## By default, this function does nothing.
+    ##
+    if declare -F post_package > /dev/null 2>&1; then
+        info_mesg "Doing post-installation steps..."
+        cd "${PACKAGE_BUILD_DIR}"
+        post_package
+    fi
+
+    ##
+    ## Creating *.deb archives. These steps cannot be
+    ## overriden.
+    ##
+    info_mesg "Packaging files into *.deb archive..."
+    (
+        #######################################################################
+        ##
+        ##  Building development package.
+        ##
+        #######################################################################
+
+        if { [ -z "${PACKAGE_NO_DEV_SPLIT}" ] || [ "${PACKAGE_NO_DEV_SPLIT}" = "false" ]; } && \
+            [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/include" ]; then
+            info_mesg "Creating package '${PACKAGE_NAME}-dev' (development files for '${PACKAGE_NAME}')..."
+
+            PACKAGE_DEV_INSTALL_DIR="${PACKAGE_BUILD_DIR}/devinstall"
+            mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN"
+            mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}"
+
+            ## Moving 'include' directory.
+            mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/include" \
+                "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/include"
+
+            ## Moving additional files/directories.
+            mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/lib"
+            mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/share"
+            if [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib/pkgconfig" ]; then
+                mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib/pkgconfig" \
+                    "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/lib/pkgconfig"
+            fi
+
+            if [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib/cmake" ]; then
+                mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib/cmake" \
+                    "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/lib/cmake"
+            fi
+
+            if [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/aclocal" ]; then
+                mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/aclocal" \
+                    "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/share/aclocal"
+            fi
+
+            if [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/pkgconfig" ]; then
+                mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/pkgconfig" \
+                    "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/share/pkgconfig"
+            fi
+
+            if [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib" ]; then
+                (
+                    cd "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/lib"
+
+                    find . \
+                        -maxdepth 1 \
+                        -type f \
+                        -iname lib\*.a \
+                        -exec mv '{}' "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/lib/{}" \;
+
+                    find . \
+                        -maxdepth 1 \
+                        -type f \
+                        -iname lib\*.la \
+                        -exec mv '{}' "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/lib/{}" \;
+                )
+            fi
+
+            ## Cleanup in case of empty directories.
+            find "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}" -type d -empty -delete
+
+            ## This should never happen (nonexistent PREFIX).
+            if [ ! -e "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}" ]; then
+                error_mesg "Error: directory '${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}' is not found."
+                error_mesg "Cannot build package."
+                exit 1
+            fi
+
+            ## Writing control file.
+            {
+                echo "Package: ${PACKAGE_NAME}-dev"
+                echo "Architecture: ${PACKAGE_TARGET_ARCHITECTURE}"
+                echo "Version: ${PACKAGE_FULL_VERSION}"
+
+                if [ -n "${PACKAGE_DEV_DEPENDS}" ]; then
+                    echo "Depends: ${PACKAGE_NAME}, ${PACKAGE_DEV_DEPENDS}"
+                else
+                    echo "Depends: ${PACKAGE_NAME}"
+                fi
+
+                echo "Maintainer: ${PACKAGE_MAINTAINER}"
+                echo "Homepage: ${PACKAGE_HOMEPAGE}"
+                echo "Description: Development files for '${PACKAGE_NAME}'"
+            } > "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN/control"
+
+            ## Fixing permissions.
+            find "${PACKAGE_DEV_INSTALL_DIR}" -type d -exec chmod 700 '{}' \;
+            find "${PACKAGE_DEV_INSTALL_DIR}" -type f -executable -exec chmod 700 '{}' \;
+            find "${PACKAGE_DEV_INSTALL_DIR}" -type f ! -executable -exec chmod 600 '{}' \;
+            chmod 755 "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN"
+            chmod 644 "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN/control"
+
+            ## Building *.deb archive.
+            rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+            dpkg-deb \
+                    --build \
+                    --uniform-compression \
+                    -Zxz \
+                    "${PACKAGE_DEV_INSTALL_DIR}" \
+                    "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb" > /dev/null
+
+            info_mesg "Done. Package stored in ./${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+        fi
+
+        #######################################################################
+        ##
+        ##  Building normal package.
+        ##
+        #######################################################################
+
+        info_mesg "Creating package '${PACKAGE_NAME}'..."
+
+        ## Writing control file.
+        {
+            echo "Package: ${PACKAGE_NAME}"
+            echo "Architecture: ${PACKAGE_TARGET_ARCHITECTURE}"
+            echo "Version: ${PACKAGE_FULL_VERSION}"
+
+            if [ -n "${PACKAGE_ESSENTIAL}" ] && [ "${PACKAGE_ESSENTIAL}" != "false" ]; then
+                echo "Essential: yes"
+            fi
+
+            if [ -n "${PACKAGE_DEPENDS}" ]; then
+                echo "Depends: ${PACKAGE_DEPENDS}"
+            fi
+
+            if [ -n "${PACKAGE_BREAKS}" ]; then
+                echo "Breaks: ${PACKAGE_BREAKS}"
+            fi
+
+            if [ -n "${PACKAGE_CONFLICTS}" ]; then
+                echo "Conflicts: ${PACKAGE_CONFLICTS}"
+            fi
+
+            if [ -n "${PACKAGE_REPLACES}" ]; then
+                echo "Replaces: ${PACKAGE_REPLACES}"
+            fi
+
+            if [ -n "${PACKAGE_PROVIDES}" ]; then
+                echo "Provides: ${PACKAGE_PROVIDES}"
+            fi
+
+            if [ -n "${PACKAGE_RECOMMENDS}" ]; then
+                echo "Recommends: ${PACKAGE_RECOMMENDS}"
+            fi
+
+            if [ -n "${PACKAGE_RECOMMENDS}" ]; then
+                echo "Suggests: ${PACKAGE_SUGGESTS}"
+            fi
+
+            echo "Maintainer: ${PACKAGE_MAINTAINER}"
+            echo "Homepage: ${PACKAGE_HOMEPAGE}"
+            echo "Description: ${PACKAGE_DESCRIPTION}"
+        } > "${PACKAGE_INSTALL_DIR}/DEBIAN/control"
+
+        ## Writing list of configuration files if needed.
+        if [ -n "${PACKAGE_CONFIG_FILES[*]}" ]; then
+            {
+                for config in "${PACKAGE_CONFIG_FILES[@]}"; do
+                    echo "${TERMUX_PREFIX}/${config}"
+                done
+            } > "${PACKAGE_INSTALL_DIR}/DEBIAN/conffiles"
+        fi
+
+        set +e +o pipefail
+        if ! ${MAKEPKG_ENABLE_DEBUG_BUILD}; then
+            ## Strip binaries if non-debug build.
+            find "${PACKAGE_INSTALL_DIR}" -type f | xargs -r file | grep -E "(executable|shared object)" | grep "ELF" | cut -f 1 -d : | \
+                xargs -r "${STRIP}" --strip-unneeded --preserve-dates
+        fi
+
+        ## Fix shebangs in script executables.
+        find "${PACKAGE_INSTALL_DIR}" -type f | xargs -r file | grep -E "(text|ASCII text)" | grep "script" | cut -f 1 -d : | \
+            xargs -r termux-fix-shebang
+        set -e -o pipefail
+
+        ## Remove DT_ entries which the android 5.1 linker warns about:
+        find "${PACKAGE_INSTALL_DIR}" -type f -exec "${TERMUX_ELF_CLEANER}" '{}' \;
+
+        ## Fixing permissions.
+        find "${PACKAGE_INSTALL_DIR}" -type d -exec chmod 700 '{}' \;
+        find "${PACKAGE_INSTALL_DIR}" -type f -executable -exec chmod 700 '{}' \;
+        find "${PACKAGE_INSTALL_DIR}" -type f ! -executable -exec chmod 600 '{}' \;
+        chmod 755 "${PACKAGE_INSTALL_DIR}/DEBIAN"
+        chmod 644 "${PACKAGE_INSTALL_DIR}/DEBIAN/control"
+        [ -f "${PACKAGE_INSTALL_DIR}/DEBIAN/preinst" ] && chmod 755 "${PACKAGE_INSTALL_DIR}/DEBIAN/preinst"
+        [ -f "${PACKAGE_INSTALL_DIR}/DEBIAN/prerm" ] && chmod 755 "${PACKAGE_INSTALL_DIR}/DEBIAN/prerm"
+        [ -f "${PACKAGE_INSTALL_DIR}/DEBIAN/postinst" ] && chmod 755 "${PACKAGE_INSTALL_DIR}/DEBIAN/postinst"
+        [ -f "${PACKAGE_INSTALL_DIR}/DEBIAN/postrm" ] && chmod 755 "${PACKAGE_INSTALL_DIR}/DEBIAN/postrm"
+        [ -f "${PACKAGE_INSTALL_DIR}/DEBIAN/conffiles" ] && chmod 644 "${PACKAGE_INSTALL_DIR}/DEBIAN/conffiles"
+
+        ## Building *.deb archive.
+        rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+        dpkg-deb \
+                --build \
+                --uniform-compression \
+                -Zxz \
+                "${PACKAGE_INSTALL_DIR}" \
+                "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb" > /dev/null
+
+        info_mesg "Done. Package stored in ./${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+    )
+
+    ## Remove files from build dir (except lock) to free space.
+    info_mesg "Cleaning build directory..."
+    if [ -d "${PACKAGE_BUILD_DIR}" ]; then
+        find "${PACKAGE_BUILD_DIR}" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            ! -iname "lock" \
+            -exec rm -rf '{}' \;
+    fi
+
+    ## Installing built packages if requested.
+    if ${MAKEPKG_INSTALL_BUILT_PACKAGE}; then
+        cd "${PACKAGE_MANIFEST_DIR}"
+
+        if [ -e "${PWD}/${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb" ]; then
+            local install_needed=""
+
+            ## Check deps for normal package.
+            if [ -n "${PACKAGE_DEPENDS}" ]; then
+                for dep in ${PACKAGE_DEPENDS//,/ }; do
+                    if ! dpkg --status "${dep}" > /dev/null 2>&1; then
+                        install_needed+=" ${dep}"
+                    fi
+                done
+                unset dep
+            fi
+
+            ## Check deps for development package.
+            if [ -n "${PACKAGE_DEV_DEPENDS}" ]; then
+                for dep in ${PACKAGE_DEV_DEPENDS//,/ }; do
+                    if ! dpkg --status "${dep}" > /dev/null 2>&1; then
+                        install_needed+=" ${dep}"
+                    fi
+                done
+                unset dep
+            fi
+
+            ## Install dependencies if required.
+            if [ -n "${install_needed}" ]; then
+                info_mesg "Installing dependencies..."
+                # shellcheck disable=SC2086
+                apt update && apt install -y ${install_needed}
+            fi
+            unset install_needed
+
+            info_mesg "Installing built packages: ${PACKAGE_NAME}, ${PACKAGE_NAME}-dev..."
+            dpkg -i "${PWD}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb" \
+                "${PWD}/${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+        else
+            local install_needed=""
+
+            ## Check deps for normal package.
+            if [ -n "${PACKAGE_DEPENDS}" ]; then
+                for dep in ${PACKAGE_DEPENDS//,/ }; do
+                    if ! dpkg --status "${dep}" > /dev/null 2>&1; then
+                        install_needed+=" ${dep}"
+                    fi
+                done
+                unset dep
+            fi
+
+            ## Install dependencies if required.
+            if [ -n "${install_needed}" ]; then
+                info_mesg "Installing dependencies..."
+                # shellcheck disable=SC2086
+                apt update && apt install -y ${install_needed}
+            fi
+            unset install_needed
+
+            info_mesg "Installing built package '${PACKAGE_NAME}'..."
+            dpkg -i "${PWD}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+        fi
+    fi
+
+    title_mesg "Finished building of '${PACKAGE_NAME}'"
+    reset_title
+
+    ## Remove lock.
+    flock -u "${BUILD_LOCK_FILE}"
+}
+
+###############################################################################
+##
+##  ACTION: GENERATE LIST OF CHECKSUMS
+##
+###############################################################################
+
+generate_checksums() {
+    read_manifest
+    declare -a checksums
+
+    info_mesg "Computing checksums (SHA-256)..."
+
+    for i in $(seq 0 $((${#PACKAGE_SOURCES[@]} - 1))); do
+        if grep -qPi '^(file|ftp|http(s)?)://.+' <<< "${PACKAGE_SOURCES[i]}"; then
+            ## URLs.
+
+            local file_name
+            file_name=$(basename "${PACKAGE_SOURCES[i]}")
+
+            ## Remove locally available file if force-download is requested.
+            if ${MAKEPKG_FORCE_DOWNLOAD_SOURCES}; then
+                rm -f "${PACKAGE_MANIFEST_DIR}/${file_name}"
+            fi
+
+            if [ ! -e "${PACKAGE_MANIFEST_DIR}/${file_name}" ]; then
+                info_mesg " * Downloading '${PACKAGE_SOURCES[i]}'"
+                download_file \
+                    "${PACKAGE_SOURCES[i]}" \
+                    "${PACKAGE_MANIFEST_DIR}/${file_name}"
+            fi
+
+            info_mesg " * Processing '${file_name}'"
+
+            ## Compute checksum.
+            checksums[${i}]=$(sha256sum "${PACKAGE_MANIFEST_DIR}/${file_name}" | awk '{ print $1 }')
+
+            unset file_name
+        else
+            ## Files in directory with manifest.
+
+            info_mesg " * Processing '${PACKAGE_SOURCES[i]}'"
+
+            if [ ! -e "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" ]; then
+                error_mesg "Error: source file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' is not exist."
+                exit 1
+            fi
+
+            if [ -d "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" ]; then
+                error_mesg "Error: source file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' is a directory."
+                exit 1
+            fi
+
+            checksums[${i}]=$(sha256sum "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" | awk '{ print $1 }')
+        fi
+    done
+    unset i
+
+    ## Note: checksums should be written to stdout to allow redirecting output,
+    ## for example, ro manifest file (i.e. `makepkg -g >> MANIFEST`).
+    info_mesg "Done."
+    {
+        ## TODO: automatic replace of PACKAGE_SOURCES_SHA256 in manifest ?
+        if [ ${#checksums[@]} -eq 1 ]; then
+            printf "PACKAGE_SOURCES_SHA256=('%s')\\n" "${checksums[@]}"
+        elif  [ ${#checksums[@]} -eq 2 ]; then
+            printf "PACKAGE_SOURCES_SHA256=('%s'\\n" "${checksums[0]}"
+            printf "                        '%s')\\n" "${checksums[-1]}"
+        else
+            printf "PACKAGE_SOURCES_SHA256=('%s'\\n" "${checksums[0]}"
+            for i in $(seq 1 $((${#PACKAGE_SOURCES[@]} - 2))); do
+                printf "                        '%s'\\n" "${checksums[i]}"
+            done
+            unset i
+            printf "                        '%s')\\n" "${checksums[-1]}"
+        fi
+    }
+}
+
+###############################################################################
+##
+##  ACTION: CREATE SOURCE ARCHIVE
+##
+###############################################################################
+
+create_source_archive() {
+    read_manifest
+
+    ## Create build directory.
+    mkdir -p "${PACKAGE_BUILD_DIR}"
+
+    ## Try to create lock to prevent multiple builds of same package.
+    exec {BUILD_LOCK_FILE}>"${PACKAGE_BUILD_DIR}/lock"
+    if ! flock -n "${BUILD_LOCK_FILE}"; then
+        error_mesg "Error: another build process for package '${PACKAGE_NAME}' is running."
+        exit 1
+    fi
+
+    ## Check source checksum list.
+    if [ -n "${PACKAGE_SOURCES_SHA256[*]}" ]; then
+        if [ ${#PACKAGE_SOURCES[@]} != ${#PACKAGE_SOURCES_SHA256[@]} ]; then
+            error_mesg "Manifest error: lengths of arrays 'PACKAGE_SOURCES' and 'PACKAGE_SOURCES_SHA256' are not equal."
+            error_mesg "You can use '${PROGRAM_NAME} -g' to obtain correct value for 'PACKAGE_SOURCES_SHA256'."
+            exit 1
+        fi
+    else
+        error_mesg "Manifest error: variable 'PACKAGE_SOURCES_SHA256' is not set."
+        error_mesg "You can use '${PROGRAM_NAME} -g' to generate it."
+        exit 1
+    fi
+
+    ## Clean build directory before doing anything.
+    find "${PACKAGE_BUILD_DIR}" \
+        -mindepth 1 \
+        -maxdepth 1 \
+        ! -iname "lock" \
+        -exec rm -rf '{}' \;
+    mkdir -p "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}"
+
+    title_mesg "Archiving source files for '${PACKAGE_NAME}'"
+
+    ## Copying directory with manifest.
+    info_mesg "Adding manifest..."
+    cp -a "${PACKAGE_MANIFEST_DIR}/MANIFEST" "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}/MANIFEST"
+
+    ## Adding source files.
+    info_mesg "Processing source files..."
+    for i in $(seq 0 $((${#PACKAGE_SOURCES[@]} - 1))); do
+        if grep -qPi '^(file|ftp|http(s)?)://.+' <<< "${PACKAGE_SOURCES[i]}"; then
+            ## URLs.
+
+            local file_name
+            file_name=$(basename "${PACKAGE_SOURCES[i]}")
+
+            ## Remove locally available file if force-download is requested.
+            if ${MAKEPKG_FORCE_DOWNLOAD_SOURCES}; then
+                rm -f "${PACKAGE_MANIFEST_DIR}/${file_name}"
+            fi
+
+            if [ ! -e "${PACKAGE_MANIFEST_DIR}/${file_name}" ]; then
+                info_mesg " * Downloading '${PACKAGE_SOURCES[i]}'"
+                download_file \
+                    "${PACKAGE_SOURCES[i]}" \
+                    "${PACKAGE_MANIFEST_DIR}/${file_name}"
+            fi
+
+            ## Verifying checksums.
+            local actual_checksum
+            info_mesg " * Verifying SHA-256 for '${file_name}'"
+            actual_checksum=$(sha256sum "${PACKAGE_MANIFEST_DIR}/${file_name}" | awk '{ print $1 }')
+            if [ "${PACKAGE_SOURCES_SHA256[i]}" != "${actual_checksum}" ]; then
+                error_mesg "Wrong checksum for '$(basename "${PACKAGE_SOURCES[i]}")'."
+                echo
+                echo "Expected: ${PACKAGE_SOURCES_SHA256[i]}"
+                echo "Actual:   ${actual_checksum}"
+                echo
+                error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
+                exit 1
+            fi
+            unset actual_checksum
+
+            if [ ! -e "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}/${file_name}" ]; then
+                info_mesg " * Adding '${file_name}'"
+                cp "${PACKAGE_MANIFEST_DIR}/${file_name}" \
+                    "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}/${file_name}"
+            fi
+
+            unset file_name
+        else
+            ## Files in directory with manifest.
+
+            if [ ! -e "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" ]; then
+                error_mesg "Error: cannot add file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' because it is not exist."
+                exit 1
+            fi
+
+            if [ -d "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" ]; then
+                error_mesg "Error: cannot add file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' because it is a directory."
+                exit 1
+            fi
+
+            ## Verifying checksums.
+            local actual_checksum
+            info_mesg " * Verifying SHA-256 for '${PACKAGE_SOURCES[i]}'"
+            actual_checksum=$(sha256sum "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" | awk '{ print $1 }')
+            if [ "${PACKAGE_SOURCES_SHA256[i]}" != "${actual_checksum}" ]; then
+                error_mesg "Wrong checksum for '${PACKAGE_SOURCES[i]}'."
+                echo
+                echo "Expected: ${PACKAGE_SOURCES_SHA256[i]}"
+                echo "Actual:   ${actual_checksum}"
+                echo
+                error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
+                exit 1
+            fi
+            unset actual_checksum
+
+            info_mesg " * Adding '${PACKAGE_SOURCES[i]}'"
+
+            ## Copying file.
+            local file_name
+            if grep -qP '^\./' <<< "${PACKAGE_SOURCES[i]}"; then
+                file_name=$(echo "${PACKAGE_SOURCES[i]}" | cut -d / -f 2)
+            else
+                file_name=$(echo "${PACKAGE_SOURCES[i]}" | cut -d / -f 1)
+            fi
+            if [ ! -e "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}/${file_name}" ]; then
+                cp -a "${PACKAGE_MANIFEST_DIR}/${file_name}" \
+                    "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}/${file_name}"
+            fi
+            unset file_name
+        fi
+
+    done
+    unset i
+
+    ## Fixing permissions.
+    fix_permissions "${PACKAGE_BUILD_DIR}"
+
+    ## Creating archive.
+    info_mesg "Creating archive..."
+    (
+        cd "${PACKAGE_BUILD_DIR}"
+        rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz"
+        tar zcf "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz" \
+            "${PACKAGE_NAME}"
+    )
+    info_mesg "Done. Archive stored in ./${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz"
+
+    info_mesg "Cleaning build directory..."
+    find "${PACKAGE_BUILD_DIR}" \
+        -mindepth 1 \
+        -maxdepth 1 \
+        ! -iname "lock" \
+        -exec rm -rf '{}' \;
+
+    title_mesg "Finished source archiving for '${PACKAGE_NAME}'"
+    reset_title
+
+    flock -u "${BUILD_LOCK_FILE}"
+}
+
+###############################################################################
+##
+##  ACTION: CREATE NEW PACKAGE
+##
+###############################################################################
+
+set +e
+read -r -d '' MAKEPKG_SAMPLE_MANIFEST_FILE << 'EOF'
+#!/bin/sh
+
+## A name of package. Mandatory field.
+PACKAGE_NAME="@NEW_PACKAGE_NAME@"
+
+## A description of package.
+PACKAGE_DESCRIPTION="My new package"
+
+## A web site of package.
+PACKAGE_HOMEPAGE="https://example.com"
+
+## A name of package maintainer.
+PACKAGE_MAINTAINER="Termux Makepkg"
+
+## Uncomment this package is architecture independent.
+#PACKAGE_HAS_NO_ARCH="true"
+
+## Uncomment this if package is essential and should
+## not be removed after installation.
+#PACKAGE_ESSENTIAL="true"
+
+## A version of package. Mandatory field.
+PACKAGE_VERSION="1.0"
+
+## A revision of package.
+#PACKAGE_REVISION="1"
+
+## An array of source code files. Can contain either URLs
+## or paths relative to manifest directory. Mandatory.
+## Usually you have put here everything that exists in
+## directory with manifest file (e.g. patches). If you
+## will not do this, checksums of these files will not
+## be checked and source archiving `makepkg -S` will
+## not work properly.
+PACKAGE_SOURCES=("http://example.com/helloworld-${PACKAGE_VERSION}.tar.gz"
+                 "bugfix.patch")
+
+## An array of SHA-256 checksums for verifying integrity
+## of source files provided in `PACKAGE_SOURCES`. Can be
+## generated by running `termux-makepkg -g`.
+PACKAGE_SOURCES_SHA256=("")
+
+## A dependencies of package. Each dependency package
+## should be separated by comma (i.e. ',').
+PACKAGE_DEPENDS=""
+
+## A build-time dependencies of package. They will be
+## installed automatically before building package. Format
+## is the same as for field `PACKAGE_DEPENDS`.
+PACKAGE_BUILD_DEPENDS=""
+
+## Other *.deb package relationship fields can be specified
+## by setting these variables:
+##
+##  PACKAGE_BREAKS
+##  PACKAGE_CONFLICTS
+##  PACKAGE_REPLACES
+##  PACKAGE_PROVIDES
+##  PACKAGE_RECOMMENDS
+##  PACKAGE_SUGGESTS
+##
+## - these variables have same format as field `PACKAGE_DEPENDS`.
+##
+## Dependencies for development packages (i.e {package name}-dev)
+## can be specified by setting variable `PACKAGE_DEV_DEPENDS`.
+
+## Extra arguments that will be passed to GNU `configure`
+## script.
+PACKAGE_EXTRA_CONFIGURE_ARGS=""
+
+## Extra arguments that will be passed to program `make`.
+PACKAGE_EXTRA_MAKE_ARGS=""
+
+## An array of configuration files.
+PACKAGE_CONFIG_FILES=("")
+
+## Uncomment this if you don't want to split development files
+## to a separate package (which has name '${PACKAGE_NAME}-dev').
+##
+## Note that `development files` are: static libraries, header files
+## and files located in directory `.../share/aclocal`.
+##
+#PACKAGE_NO_DEV_SPLIT="true"
+
+
+
+## Function `fetch()` is used to download source files.
+##
+## Usually, you don't have to override the makepkg's internal
+## ways for downloading files. Just left it commented out or
+## remove.
+##
+## Note that if you need to download files manually, consider
+## to use `download_file` instead of directly calling tools
+## such as `curl`, `wget`, etc...
+##
+#fetch() {
+#    return 0
+#}
+
+## Function `unpack()` is used to check integrity and unpack
+## archives.
+##
+## Usually, you don't have to override the makepkg's internal
+## ways for unpacking source files except for the case when
+## downloaded files are not TAR or ZIP archives and you should
+## handle them manually. In any other cases just left if
+## commented out or remove.
+##
+#unpack() {
+#    return 0
+#}
+
+## Function `prepare()` is used to set additional variables,
+## patch source code or something else that should be done
+## before configuration of compilation.
+##
+## By default, it is unset and not executed.
+##
+prepare() {
+    ## Default `PACKAGE_SOURCE_DIR` is set to
+    ## `${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}-${PACKAGE_VERSION}`.
+    ##
+    ## However, sometimes it should have to be set to something
+    ## different. If you need to change this variable, do this
+    ## only in function `prepare()`.
+    #PACKAGE_SOURCE_DIR="${PACKAGE_NAME}"
+
+    cd "${PACKAGE_SOURCE_DIR}"
+
+    ## You may need to apply patches for your package.
+    ## Remember, that patches are stored in the directory
+    ## with manifest file to you have to use absolute path.
+    ## It is also recommended to use `apply_patch` for
+    ## applying patches.
+    #apply_patch "${PACKAGE_MANIFEST_DIR}/mypatch.patch"
+
+    return 0
+}
+
+## Function `configure()` is used to configure current
+## build.
+##
+## By default it executes the GNU configuration script,
+## so it usually shouldn't be overriden for projects
+## that use GNU autoconf/automake.
+##
+## If you need only to pass additional arguments to the
+## `configure` script, set the `PACKAGE_EXTRA_CONFIGURE_ARGS`
+## instead of redefining this function.
+##
+#configure() {
+#    cd "${PACKAGE_SOURCE_DIR}"
+#    return 0
+#}
+
+## Function `build()` is used to compile the source files.
+##
+## By default, it just executes `make` with some generic
+## parameters and usually you should only set
+## `PACKAGE_EXTRA_MAKE_ARGS` instead of redefining the
+## whole function.
+##
+#build() {
+#    cd "${PACKAGE_SOURCE_DIR}"
+#    make -j ${PACKAGE_EXTRA_MAKE_ARGS} $(nproc)
+#}
+
+## Function `check()` is used to perform tests on compiled
+## stuff before installation.
+##
+## By default, this function is unset and not executed. Define
+## it only if you know what you are doing.
+##
+#check() {
+#    cd "${PACKAGE_SOURCE_DIR}"
+#    make check
+#}
+
+## Function `package()` is used to create a file structure
+## that later will be archived into *.deb file.
+##
+## By default it executes `make install` with the argument
+## `DESTDIR=${PACKAGE_INSTALL_DIR}` and additional arguments
+## from `PACKAGE_EXTRA_MAKE_ARGS`.
+##
+## Usually, this function shouldn't be redefined. But if you did
+## this, make sure that `DESTDIR` is set to `${PACKAGE_INSTALL_DIR}`
+## or you will likely mess up with your Termux installation.
+##
+## If you are copying files with `cp` or `install`, make sure that
+## destination directory is located under `${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}`.
+##
+#package() {
+#    cd "${PACKAGE_SOURCE_DIR}"
+#    make install DESTDIR="${PACKAGE_INSTALL_DIR}" ${PACKAGE_EXTRA_MAKE_ARGS}
+#}
+
+## Function `post_package()` is used for doing post-installation
+## modifications.
+##
+## By default this function is unset and not executed. If you defined
+## this function, remember that all installed files are located under
+## `${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}`.
+##
+## If you want to create *.deb scripts (e.g. postinst or postrm), you
+## should place them under `${PACKAGE_INSTALL_DIR}/DEBIAN/`.
+##
+#post_package() {
+#    return 0
+#}
+EOF
+set -e
+readonly MAKEPKG_SAMPLE_MANIFEST_FILE
+
+create_new_package() {
+    if [ -n "${1+x}" ]; then
+        local NEW_PACKAGE_NAME=${1}
+
+        if [ -n "${NEW_PACKAGE_NAME}" ]; then
+            if ! grep -qP '^[a-z0-9]+((-[a-z0-9]+)+)?$' <<< "${NEW_PACKAGE_NAME}"; then
+                error_mesg "Error: invalid package name specified."
+                error_mesg "Package name can consist only from lowercase alphanumeric characters, numbers and dash. The dash character should not be placed to the beginning or ending of the package name."
+                exit 1
+            fi
+        else
+            error_mesg "Error: package name should not be empty."
+            exit 1
+        fi
+
+        ## Fail if directory '${NEW_PACKAGE_NAME}' exist.
+        if [ -e "${PWD}/${NEW_PACKAGE_NAME}" ]; then
+            error_mesg "Error: file './${NEW_PACKAGE_NAME}' is already exist."
+            exit 1
+        fi
+
+        info_mesg "Initializing package '${NEW_PACKAGE_NAME}'..."
+
+        ## Create directory and write manifest file.
+        mkdir "${NEW_PACKAGE_NAME}"
+        echo "${MAKEPKG_SAMPLE_MANIFEST_FILE//@NEW_PACKAGE_NAME@/$NEW_PACKAGE_NAME}" > "${NEW_PACKAGE_NAME}/MANIFEST"
+
+        info_mesg "Done. Check directory ./${NEW_PACKAGE_NAME} and edit manifest file."
+    else
+        error_mesg "BUG: create_new_package() is called without argument."
+        exit 1
+    fi
+}
+
+
+
+###############################################################################
+##
+##  ENTRY POINT (HANDLE COMMAND LINE OPTIONS)
+##
+###############################################################################
+
+set +u
+while getopts ":dghiqS-:" param; do
+    case "${param}" in
+        -)
+            case "${OPTARG}" in
+                debug) MAKEPKG_ENABLE_DEBUG_BUILD="true";;
+                download) MAKEPKG_FORCE_DOWNLOAD_SOURCES="true";;
+                geninteg) MAKEPKG_ACTION="generate_checksums";;
+                help) MAKEPKG_ACTION="show_help";;
+                install) MAKEPKG_INSTALL_BUILT_PACKAGE="true";;
+                quiet) MAKEPKG_DISABLE_STDOUT="true";;
+                source) MAKEPKG_ACTION="create_source_archive";;
+                new)
+                    MAKEPKG_NEW_PACKAGE_NAME="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+                    if [ -z "${MAKEPKG_NEW_PACKAGE_NAME}" ]; then
+                        error_mesg "Error: option '--new' requires an argument."
+                        exit 1
+                    fi
+                    MAKEPKG_ACTION="create_new_package"
+                    ;;
+                nocheck) MAKEPKG_DISABLE_CHECK_FN="true";;
+                nocolor) MAKEPKG_DISABLE_COLORS="true";;
+                version) MAKEPKG_ACTION="show_version";;
+                *)
+                    error_mesg "Error: invalid option '--${OPTARG}'."
+                    error_mesg "Run '${PROGRAM_NAME} --help' to see which options are available."
+                    exit 1
+                    ;;
+            esac
+            ;;
+        d) MAKEPKG_ENABLE_DEBUG_BUILD="true";;
+        g) MAKEPKG_ACTION="generate_checksums";;
+        h) MAKEPKG_ACTION="show_help";;
+        i) MAKEPKG_INSTALL_BUILT_PACKAGE="true";;
+        q) MAKEPKG_DISABLE_STDOUT="true";;
+        S) MAKEPKG_ACTION="create_source_archive";;
+        *)
+            error_mesg "Error: invalid option: '-${OPTARG}'."
+            error_mesg "Run '${PROGRAM_NAME} --help' to see which options are available."
+            exit 1
+            ;;
+    esac
+done
+set -u
+
+## Now make configuration variables read-only to ensure that they will
+## not be changed.
+readonly MAKEPKG_ACTION
+readonly MAKEPKG_ENABLE_DEBUG_BUILD
+readonly MAKEPKG_FORCE_DOWNLOAD_SOURCES
+readonly MAKEPKG_DISABLE_CHECK_FN
+readonly MAKEPKG_DISABLE_STDOUT
+readonly MAKEPKG_INSTALL_BUILT_PACKAGE
+
+## Unset variables that no more needed.
+unset OPTARG
+unset OPTIND
+unset param
+
+## Suppress standard output if requested. This should not work
+## when action `generate_checksums` is used.
+if ${MAKEPKG_DISABLE_STDOUT} && [ "${MAKEPKG_ACTION}" != "generate_checksums" ]; then
+    exec 1>/dev/null
+fi
+
+trap 'error_mesg "Stopping by user request..."; reset_title; exit 1;' HUP INT TERM
+
+case "${MAKEPKG_ACTION}" in
+    build_package) build_package;;
+    create_new_package) create_new_package "${MAKEPKG_NEW_PACKAGE_NAME}";;
+    create_source_archive) create_source_archive;;
+    generate_checksums) generate_checksums;;
+    show_help)
+        echo
+        echo "Usage: ${PROGRAM_NAME} [OPTIONS]"
+        echo
+        echo "This is a tool for building packages for Termux."
+        echo
+        echo "Options:"
+        echo
+        echo "  -d, --debug      Enable debug options for compilation."
+        echo "                   Debugging information will not be"
+        echo "                   stripped from binaries."
+        echo
+        echo "  -g, --geninteg   Compute checksums for source files."
+        echo
+        echo "  -h, --help       Show information about usage and exit."
+        echo
+        echo "  -i, --install    Install built package."
+        echo
+        echo "  -q, --quiet      Suppress everything that is printed"
+        echo "                   to stdout. This makes build logs"
+        echo "                   much less verbose but errors may"
+        echo "                   still be shown."
+        echo
+        echo "  -S, --source     Create an archive with manifest"
+        echo "                   and source files."
+        echo
+        echo "  --download       Force download files from URLs"
+        echo "                   instead of looking for existing."
+        echo
+        echo "  --new PKGNAME    Create a dummy project structure"
+        echo "                   for new package with specified name"
+        echo "                   and exit."
+        echo
+        echo "  --nocheck        Do not execute function 'check()' in"
+        echo "                   manifest."
+        echo
+        echo "  --nocolor        Disable colors on informational messages."
+        echo
+        echo "  --version        Show version information and exit."
+        echo
+        ;;
+    show_version)
+        echo
+        echo "termux-makepkg ${PROGRAM_VERSION}"
+        echo
+        echo "Copyright (C) 2018 Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+        echo
+        echo "This is free software; see the source for copying conditions. There is NO"
+        echo "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+        echo
+        ;;
+    *)
+        error_mesg "BUG: Unknown action '${MAKEPKG_ACTION}' requested."
+        exit 1
+        ;;
+esac
+
+exit 0

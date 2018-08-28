@@ -1,0 +1,17 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="autossh"
+PACKAGE_DESCRIPTION="Automatically restart SSH sessions and tunnels"
+PACKAGE_HOMEPAGE="http://www.harding.motd.ca/autossh/"
+PACKAGE_VERSION="1.4f"
+PACKAGE_EXTRA_CONFIGURE_ARGS="--mandir=${TERMUX_PREFIX}/share/man ac_cv_path_ssh=${TERMUX_PREFIX}/bin/ssh"
+PACKAGE_DEPENDS="openssh"
+
+PACKAGE_SOURCES=("https://fossies.org/linux/privat/autossh-${PACKAGE_VERSION}.tar.xz")
+PACKAGE_SOURCES_SHA256=('f47fe281a840e00a141204ad9cc54a9ebfb5af8235a45a3f25b14184934f05af')
+
+prepare() {
+    # For syslog logging:
+    LDFLAGS+=" -llog"
+}

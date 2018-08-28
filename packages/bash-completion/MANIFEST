@@ -1,0 +1,20 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="bash-completion"
+PACKAGE_DESCRIPTION="Programmable completion for the bash shell"
+PACKAGE_HOMEPAGE="https://github.com/scop/bash-completion"
+PACKAGE_VERSION="2.8"
+PACKAGE_HAS_NO_ARCH="true"
+PACKAGE_DEPENDS="bash"
+
+PACKAGE_SOURCES=("https://github.com/scop/bash-completion/releases/download/${PACKAGE_VERSION}/bash-completion-${PACKAGE_VERSION}.tar.xz"
+                 "completions-man.patch")
+
+PACKAGE_SOURCES_SHA256=('c01f5570f5698a0dda8dc9cfb2a83744daa1ec54758373a6e349bd903375f54d'
+                        '4392667a6863b0620f17d616e82fe4c1dc1a025bc1cfd01c16135635cbab11b8')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/completions-man.patch"
+}

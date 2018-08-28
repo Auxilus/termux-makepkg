@@ -1,0 +1,34 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="angband"
+PACKAGE_DESCRIPTION="Dungeon exploration adventure game"
+PACKAGE_HOMEPAGE="http://rephial.org/"
+PACKAGE_VERSION="4.1.3"
+PACKAGE_DEPENDS="ncurses"
+PACKAGE_BUILD_DEPENDS="ncurses-dev"
+
+PACKAGE_EXTRA_CONFIGURE_ARGS="
+--disable-x11
+--bindir=${TERMUX_PREFIX}/bin
+--sysconfdir=${TERMUX_PREFIX}/share/angband
+"
+
+PACKAGE_EXTRA_MAKE_ARGS="LD=ld"
+
+PACKAGE_SOURCES=("http://rephial.org/downloads/4.1/angband-${PACKAGE_VERSION}.tar.gz"
+                 "src-main.c.patch")
+
+PACKAGE_SOURCES_SHA256=('9402c4f8da691edbd4567a948c5663e1066bee3fcb4a62fbcf86b5454918406f'
+                        '05dd42d6def5e09e1e2cde72a4ea2b855c755aad48066ad177ad7235feba571a')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/src-main.c.patch"
+    bash ./autogen.sh
+    perl -p -i -e 's|ncursesw5-config|ncursesw6-config|g' ./configure
+}
+
+post_package() {
+    rm -Rf "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}"/share/angband/{fonts,icons,sounds,xtra}
+}

@@ -1,0 +1,57 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="termux-tools"
+PACKAGE_DESCRIPTION="Basic system tools for Termux"
+PACKAGE_HOMEPAGE="https://termux.com/"
+PACKAGE_VERSION="0.55"
+PACKAGE_HAS_NO_ARCH="true"
+PACKAGE_ESSENTIAL="true"
+PACKAGE_DEPENDS="termux-am"
+PACKAGE_CONFIG_FILES="etc/motd"
+
+PACKAGE_SOURCES=(chsh dalvikvm login motd pkg su termux-fix-shebang
+                 termux-info termux-open termux-open-url termux-reload-settings
+                 termux-setup-storage termux-wake-lock termux-wake-unlock)
+
+PACKAGE_SOURCES_SHA256=('4f77060030173c98208ba74c3404d980d59fb8602e4b80fddec4dc2515bc8fc4'
+                        'bc2f29891596e058e06f22194bc0fabcc62f30f2fd918cc53d2d4ee99e9695c5'
+                        'bf91aac2f097806a9f0592e0a92a5a8e9c980967c1b37729a401d3649eab2384'
+                        '9401b240a45b08f34c580ca542e19019adf0063838b2d3594e635dda22c23ac2'
+                        '65b082c35d0627fb1fa3ae80e1583d5a2e9bb6963106400ab3281ff8297fa885'
+                        '6faa4890a349b843fe0d64461b93552947d16d56dbc53b79291c8e8cd916fbc4'
+                        'a45184578c18cca107928517c9b8786db7a04c70a5f583a81c778247dd77d1bb'
+                        '8cb450c366630a00f1f2482a5fc97744050dc4462aeba65d0e5a4f1adb394475'
+                        '9add59795f9b1363c77c9f550371a0a30889e7dfef8927cc682943433a99e3ec'
+                        '2143c6d31103d2247919ff6669bb01882458f948144aaa9d11f7de38ecf97ad4'
+                        'df8d49e67e702b1cb62cdcac6b1e9cbe81f8a0b972a9d6dcc9286276c5fbee6d'
+                        '20c4dba88891fdb0cf42d5efd70707b2e8205836d666049ffa258f7ed4841d85'
+                        '5ee7ae047ec7a69a98fb3388b315389846dac5f9b3a12c2566aa826f37210756'
+                        '82b202af7ea9fa304a5974a0f8664f03837503db14fd7931bcc909b7e037c45c')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}"
+}
+
+package() {
+    cd "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}"
+
+    mkdir -p ./bin/applets ./etc
+
+    # Remove LD_LIBRARY_PATH from environment to avoid conflicting
+    # with system libraries that system binaries may link against:
+    for tool in df getprop logcat ping ping6 ip pm settings; do
+        {
+            echo "#!${TERMUX_PREFIX}/bin/sh"
+            echo "unset LD_LIBRARY_PATH LD_PRELOAD"
+            echo "export PATH=\${PATH}:/system/bin"
+            echo "exec /system/bin/\${tool} \"\${@}\""
+        } > "./bin/${tool}"
+        chmod +x "./bin/${tool}"
+    done
+
+    cp "${PACKAGE_MANIFEST_DIR}/motd" ./etc/motd
+    cp -p "${PACKAGE_MANIFEST_DIR}"/{dalvikvm,su,termux-fix-shebang,termux-reload-settings,termux-setup-storage,chsh,termux-open-url,termux-wake-lock,termux-wake-unlock,login,pkg,termux-open,termux-info} ./bin/
+    perl -p -i -e "s%\@TERMUX_PREFIX\@%${TERMUX_PREFIX}%g" ./bin/dalvikvm
+    ln -sfr ./bin/termux-open ./bin/xdg-open
+}

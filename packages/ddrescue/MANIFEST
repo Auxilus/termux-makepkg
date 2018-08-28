@@ -1,0 +1,18 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="ddrescue"
+PACKAGE_DESCRIPTION="GNU data recovery tool"
+PACKAGE_HOMEPAGE="https://www.gnu.org/software/ddrescue/"
+PACKAGE_VERSION="1.23"
+
+PACKAGE_SOURCES=("http://mirrors.kernel.org/gnu/ddrescue/ddrescue-${PACKAGE_VERSION}.tar.lz"
+                 "fix-configure.patch")
+
+PACKAGE_SOURCES_SHA256=('a9ae2dd44592bf386c9c156a5dacaeeb901573c9867ada3608f887d401338d8d'
+                        'b0c21b10e6ae66be60052333eae8247ffc62c3e27adcd2eda4055f4c2ab8dc4d')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/fix-configure.patch"
+}

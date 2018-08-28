@@ -1,0 +1,12 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="lzop"
+PACKAGE_DESCRIPTION="File compressor using lzo lib"
+PACKAGE_HOMEPAGE="https://www.lzop.org"
+PACKAGE_VERSION="1.04"
+PACKAGE_DEPENDS="liblzo"
+PACKAGE_BUILD_DEPENDS="liblzo-dev"
+
+PACKAGE_SOURCES=("https://fossies.org/linux/misc/lzop-${PACKAGE_VERSION}.tar.xz")
+PACKAGE_SOURCES_SHA256=('dd294d2425a646952e5a316907356ea3c6bddab0f47d5f88ac808c89b290467b')

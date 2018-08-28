@@ -1,0 +1,27 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="bvi"
+PACKAGE_DESCRIPTION="Binary file editor based on vi"
+PACKAGE_HOMEPAGE="http://bvi.sourceforge.net/"
+PACKAGE_VERSION="1.4.0"
+PACKAGE_DEPENDS="ncurses"
+PACKAGE_BUILD_DEPENDS="ncurses-dev"
+PACKAGE_EXTRA_CONFIGURE_ARGS="ac_cv_lib_ncursesw6_addnwstr=yes"
+
+PACKAGE_SOURCES=("http://sourceforge.net/projects/bvi/files/bvi/${PACKAGE_VERSION}/bvi-${PACKAGE_VERSION}.src.tar.gz"
+                 "Makefile.in.patch"
+                 "column_number_bugfix.patch"
+                 "comm.c.patch")
+
+PACKAGE_SOURCES_SHA256=('015a3c2832c7c097d98a5527deef882119546287ba8f2a70c736227d764ef802'
+                        '294473fc155e44f4a1880ca00f1ed62a7822addecf527b8fd7334e55733d3569'
+                        'c9785ed8e49407ab56ed59725ca272e727760a6498ca00a6b99a500ba9fc9134'
+                        '22da5cead03be2e93494bec5788d91669a1cd5e2ad951153c1069071fe6837ee')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/column_number_bugfix.patch"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/comm.c.patch"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/Makefile.in.patch"
+}

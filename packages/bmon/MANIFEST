@@ -1,0 +1,21 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="bmon"
+PACKAGE_DESCRIPTION="Bandwidth monitor and rate estimator"
+PACKAGE_HOMEPAGE="https://github.com/tgraf/bmon"
+PACKAGE_VERSION="4.0"
+PACKAGE_DEPENDS="libconfuse, libnl, ncurses"
+PACKAGE_BUILD_DEPENDS="libconfuse-dev, libnl-dev, ncurses-dev"
+
+PACKAGE_SOURCES=("https://github.com/tgraf/bmon/archive/v${PACKAGE_VERSION}.tar.gz"
+                 "config.h.patch")
+
+PACKAGE_SOURCES_SHA256=('d5e503ff6b116c681ebf4d10e238604dde836dceb9c0008eb92416a96c87ca40'
+                        'fc09460aa2b51334c5ff561d853550981b0b380537aab80904f19c1a9f3bf0c5')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/config.h.patch"
+    bash ./autogen.sh
+}

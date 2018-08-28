@@ -1,0 +1,24 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="abook"
+PACKAGE_DESCRIPTION="Abook is a text-based addressbook program designed to use with mutt mail client"
+PACKAGE_HOMEPAGE="http://abook.sourceforge.net/"
+PACKAGE_VERSION="0.6.0pre2"
+PACKAGE_DEPENDS="libandroid-support, ncurses, readline"
+PACKAGE_BUILD_DEPENDS="libandroid-support-dev, ncurses-dev, readline-dev"
+PACKAGE_EXTRA_CONFIGURE_ARGS="--mandir=$TERMUX_PREFIX/share/man"
+
+PACKAGE_SOURCES=("http://abook.sourceforge.net/devel/abook-${PACKAGE_VERSION}.tar.gz"
+                 "database.h.patch"
+                 "filter.c.patch")
+
+PACKAGE_SOURCES_SHA256=('59d444504109dd96816e003b3023175981ae179af479349c34fa70bc12f6d385'
+                        '5c55e7638f32247c1d2c7de7f8f07939bb208070c5243b008e5a2dbd27f912d1'
+                        '6a1e5084080fcfd4678ec8b4f73dda24a9f63a3f76c26a7041145936245d0a91')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/database.h.patch"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/filter.c.patch"
+}

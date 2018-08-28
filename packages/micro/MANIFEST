@@ -1,0 +1,30 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="micro"
+PACKAGE_DESCRIPTION="Modern and intuitive terminal-based text editor"
+PACKAGE_HOMEPAGE="https://micro-editor.github.io/"
+PACKAGE_VERSION="1.4.1"
+PACKAGE_BUILD_DEPENDS="golang"
+
+PACKAGE_SOURCES=("https://github.com/zyedidia/micro/releases/download/v${PACKAGE_VERSION}/micro-${PACKAGE_VERSION}-src.tar.gz")
+PACKAGE_SOURCES_SHA256=('0b516826226cf1ddf2fbb274f049cab456a5c162efe3d648f0871564fadcf812')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}"
+    cd "${PACKAGE_SOURCE_DIR}"
+
+    export GOPATH="${PACKAGE_BUILD_DIR}/go"
+    mkdir -p "${GOPATH}/src/github.com/zyedidia/micro"
+    cp -R . "${GOPATH}/src/github.com/zyedidia/micro/"
+}
+
+build() {
+    cd "${GOPATH}/src/github.com/zyedidia/micro"
+    make build-quick
+}
+
+package() {
+    cd "${GOPATH}/src/github.com/zyedidia/micro"
+    install -Dm700 micro "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/micro"
+}

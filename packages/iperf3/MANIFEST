@@ -1,0 +1,29 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="iperf3"
+PACKAGE_DESCRIPTION="TCP, UDP, and SCTP network bandwidth measurement tool"
+PACKAGE_HOMEPAGE="https://github.com/esnet/iperf"
+PACKAGE_VERSION="3.6"
+PACKAGE_DEPENDS="openssl"
+PACKAGE_BUILD_DEPENDS="openssl-dev"
+
+PACKAGE_SOURCES=("https://fossies.org/linux/privat/iperf-${PACKAGE_VERSION}.tar.gz"
+                 "main_Makefile.in.patch"
+                 "src-iperf_api.c.patch"
+                 "src_makefile.in.patch")
+
+PACKAGE_SOURCES_SHA256=('de5d51e46dc460cc590fb4d44f95e7cad54b74fea1eba7d6ebd6f8887d75946e'
+                        '1acdd8ff115d1487b6b947b9aca1be0a47e5779500db0c78f26191b3a28abece'
+                        'f1928ecf3b8b95bcf6dfab9e3b0657edd999af17329dd2df07535b477f06989d'
+                        'a7550d9c3548237b924d0c0e6ab2732f7afb6481187c28c02fa9bb5ed39755f5')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}/iperf-${PACKAGE_VERSION}"
+    cd "${PACKAGE_SOURCE_DIR}"
+
+    for patch in ${PACKAGE_MANIFEST_DIR}/*.patch; do
+        apply_patch "${patch}"
+    done
+    unset patch
+}

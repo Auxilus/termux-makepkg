@@ -1,0 +1,23 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="axel"
+PACKAGE_DESCRIPTION="Light command line download accelerator"
+PACKAGE_HOMEPAGE="https://github.com/axel-download-accelerator/axel"
+PACKAGE_VERSION="2.16.1"
+PACKAGE_DEPENDS="openssl"
+PACKAGE_BUILD_DEPENDS="gettext, openssl-dev, pkg-config"
+
+PACKAGE_SOURCES=("https://github.com/axel-download-accelerator/axel/releases/download/v${PACKAGE_VERSION}/axel-${PACKAGE_VERSION}.tar.gz"
+                 "axel.c.patch"
+                 "search.c.patch")
+
+PACKAGE_SOURCES_SHA256=('675a8608ffa305b98624a3c2684c84e4696572e3fd7dce6d12e0a9b61d64b67f'
+                        '4db7e79c795996ad3328b6b33dedc6769e77bdc890615e36e8f3cd9c405d81e1'
+                        'e4dc2dc931090247478a2ed8bad1efaba0a90c49d93d4f69186b47897d577e38')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/axel.c.patch"
+    apply_patch "${PACKAGE_MANIFEST_DIR}/search.c.patch"
+}
