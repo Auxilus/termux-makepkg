@@ -6,7 +6,6 @@ PACKAGE_DESCRIPTION="BZ2 format compression library"
 PACKAGE_HOMEPAGE="http://www.bzip.org/"
 PACKAGE_VERSION="1.0.6"
 PACKAGE_REVISION="1"
-PACKAGE_EXTRA_MAKE_ARGS="PREFIX=${TERMUX_PREFIX}"
 
 PACKAGE_SOURCES=("https://fossies.org/linux/misc/bzip2-${PACKAGE_VERSION}.tar.xz"
                  "cross_compile.patch"
