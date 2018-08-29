@@ -1,0 +1,20 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="libconfig"
+PACKAGE_DESCRIPTION="C/C++ Configuration File Library"
+PACKAGE_HOMEPAGE="https://github.com/hyperrealm/libconfig"
+PACKAGE_VERSION="1.7.2"
+PACKAGE_BUILD_DEPENDS="texinfo"
+
+PACKAGE_SOURCES=("https://github.com/hyperrealm/libconfig/archive/v${PACKAGE_VERSION}.tar.gz")
+PACKAGE_SOURCES_SHA256=('f67ac44099916ae260a6c9e290a90809e7d782d96cdd462cac656ebc5b685726')
+
+prepare() {
+    cd "${PACKAGE_SOURCE_DIR}"
+    autoreconf -fi
+}
+
+post_package() {
+    rm -f "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/info/dir"
+}
