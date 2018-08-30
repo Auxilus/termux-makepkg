@@ -868,6 +868,16 @@ build_package() {
             file_name=$(basename "${PACKAGE_SOURCES[i]}")
             file_path="${PACKAGE_MANIFEST_DIR}/${file_name}"
 
+            if [ ! -e "${file_path}" ]; then
+                error_mesg "Error: source file '${file_path}' is not exist."
+                exit 1
+            fi
+
+            if [ -d "${file_path}" ]; then
+                error_mesg "Error: source file '${file_path}' is a directory."
+                exit 1
+            fi
+
             info_mesg " * Verifying SHA-256 for '${file_name}'"
             verify_sha256 "${file_path}" "${PACKAGE_SOURCES_SHA256[i]}"
 
@@ -1481,12 +1491,12 @@ create_source_archive() {
             ## Files in directory with manifest.
 
             if [ ! -e "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" ]; then
-                error_mesg "Error: cannot add file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' because it is not exist."
+                error_mesg "Error: source file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' is not exist."
                 exit 1
             fi
 
             if [ -d "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" ]; then
-                error_mesg "Error: cannot add file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' because it is a directory."
+                error_mesg "Error: source file '${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}' is a directory."
                 exit 1
             fi
 
