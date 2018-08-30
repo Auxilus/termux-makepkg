@@ -5,6 +5,7 @@ PACKAGE_NAME="libgmp"
 PACKAGE_DESCRIPTION="Library for arbitrary precision arithmetic"
 PACKAGE_HOMEPAGE="https://gmplib.org/"
 PACKAGE_VERSION="6.1.2"
+PACKAGE_REVISION="1"
 
 PACKAGE_SOURCES=("http://mirrors.kernel.org/gnu/gmp/gmp-${PACKAGE_VERSION}.tar.xz")
 PACKAGE_SOURCES_SHA256=('87b565e89a9a684fe4ebeeddb8399dce2599f9c9049854ca8c0dfbdea0e21912')

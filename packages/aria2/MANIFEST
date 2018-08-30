@@ -5,6 +5,7 @@ PACKAGE_NAME="aria2"
 PACKAGE_DESCRIPTION="Download utility supporting HTTP/HTTPS, FTP, BitTorrent and Metalink"
 PACKAGE_HOMEPAGE="https://aria2.github.io"
 PACKAGE_VERSION="1.34.0"
+PACKAGE_REVISION="1"
 PACKAGE_DEPENDS="c-ares, libxml2, openssl"
 PACKAGE_BUILD_DEPENDS="c-ares-dev, libxml2-dev, openssl-dev"
 

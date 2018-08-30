@@ -5,6 +5,7 @@ PACKAGE_NAME="bmon"
 PACKAGE_DESCRIPTION="Bandwidth monitor and rate estimator"
 PACKAGE_HOMEPAGE="https://github.com/tgraf/bmon"
 PACKAGE_VERSION="4.0"
+PACKAGE_REVISION="2"
 PACKAGE_DEPENDS="libconfuse, libnl, ncurses"
 PACKAGE_BUILD_DEPENDS="libconfuse-dev, libnl-dev, ncurses-dev"
 

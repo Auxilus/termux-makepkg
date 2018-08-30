@@ -5,6 +5,7 @@ PACKAGE_NAME="ddrescue"
 PACKAGE_DESCRIPTION="GNU data recovery tool"
 PACKAGE_HOMEPAGE="https://www.gnu.org/software/ddrescue/"
 PACKAGE_VERSION="1.23"
+PACKAGE_REVISION="1"
 
 PACKAGE_SOURCES=("http://mirrors.kernel.org/gnu/ddrescue/ddrescue-${PACKAGE_VERSION}.tar.lz"
                  "fix-configure.patch")

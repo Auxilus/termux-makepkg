@@ -5,6 +5,7 @@ PACKAGE_NAME="diffutils"
 PACKAGE_DESCRIPTION="Programs (cmp, diff, diff3 and sdiff) related to finding differences between files"
 PACKAGE_HOMEPAGE="https://www.gnu.org/software/diffutils/"
 PACKAGE_VERSION="3.6"
+PACKAGE_REVISION="1"
 PACKAGE_EXTRA_CONFIGURE_ARGS="ac_cv_path_PR_PROGRAM=${TERMUX_PREFIX}/bin/pr"
 
 PACKAGE_SOURCES=("https://mirrors.kernel.org/gnu/diffutils/diffutils-${PACKAGE_VERSION}.tar.xz")

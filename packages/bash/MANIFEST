@@ -8,6 +8,7 @@ PACKAGE_HOMEPAGE="https://www.gnu.org/software/bash/"
 _MAIN_VERSION="4.4"
 _PATCH_VERSION="23"
 PACKAGE_VERSION="${_MAIN_VERSION}.${_PATCH_VERSION}"
+PACKAGE_REVISION="2"
 PACKAGE_DEPENDS="command-not-found, libandroid-support, ncurses, readline, termux-tools"
 PACKAGE_BUILD_DEPENDS="libandroid-support-dev, ncurses-dev, readline-dev"
 

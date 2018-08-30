@@ -1,70 +1,37 @@
 diff -uNr dropbear-2018.76/cli-auth.c dropbear-2018.76.mod/cli-auth.c
 --- dropbear-2018.76/cli-auth.c	2018-02-27 16:25:10.000000000 +0200
-+++ dropbear-2018.76.mod/cli-auth.c	2018-08-25 01:11:15.276749017 +0300
-@@ -32,6 +32,71 @@
++++ dropbear-2018.76.mod/cli-auth.c	2018-04-21 13:44:51.797063206 +0300
+@@ -32,6 +32,38 @@
  #include "packet.h"
  #include "runopts.h"
  
 +
 +// getpass implementation
 +#ifdef __ANDROID__
-+static __inline__ char* getpass(const char* prompt) {
-+    // termios struct as in asm-generic/termbits.h
-+    struct _termios {
-+        unsigned int c_iflag;              /* input mode flags */
-+        unsigned int c_oflag;              /* output mode flags */
-+        unsigned int c_cflag;              /* control mode flags */
-+        unsigned int c_lflag;              /* local mode flags */
-+        unsigned char c_line;              /* line discipline */
-+        unsigned char c_cc[19/* NCCS */];  /* control characters */
-+    };
++#include <termios.h>
++#include <readline/readline.h>
 +
-+    struct _termios term_old, term_new;
-+    static char password[513] = { 0 }; /* 512 1-byte charactes and '0' */
-+    int len = 0, tty_changed = 0;
++static char* getpass(const char *prompt) {
++    struct termios term_old, term_new;
++    int nread;
 +
-+    // print prompt
-+    while (*prompt) {
-+        write(1, prompt, 1);
-+        prompt++;
++    /* Turn echoing off and fail if we can't. */
++    if (tcgetattr (0, &term_old) != 0) {
++        return NULL;
 +    }
 +
-+    // try to disable echoing on terminal
-+    if (ioctl(0, 0x5401 /* TCGETS */, &term_old) == 0) {
-+        term_new = term_old;
-+        term_new.c_lflag &= ~0000010;/* ~ECHO */
++    term_new = term_old;
++    term_new.c_lflag &= ~ECHO;
 +
-+        if (ioctl(0, 0x5402+0 /* TCSETS+TCSANOW */, &term_new) == 0) {
-+            tty_changed = 1;
-+        } else {
-+            tty_changed = 0;
-+        }
++    if (tcsetattr (0, TCSAFLUSH, &term_new) != 0) {
++        return NULL;
 +    }
 +
-+    // read password
-+    char chr;
-+    while (read(0, &chr, sizeof(char)) > 0) {
-+        if (chr == '\r' || chr == '\n' || chr == 0) {
-+            break;
-+        }
++    /* Read the password. */
++    char *password = readline(prompt);
 +
-+        if (len == sizeof(password)-1) {
-+            // we should consume all entered characters even
-+            // if maximal input length reached
-+            continue;
-+        } else {
-+            password[len++] = chr;
-+        }
-+    }
-+    password[len] = 0;
-+
-+    // restore terminal to previous state if needed
-+    if (tty_changed) {
-+        ioctl(0, 0x5402+0 /* TCSETS+TCSANOW */, &term_old);
-+    }
-+
-+    // force new line
-+    write(1, "\n", 1);
++    /* Restore terminal. */
++    (void) tcsetattr (0, TCSAFLUSH, &term_old);
 +
 +    return password;
 +}

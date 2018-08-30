@@ -5,8 +5,9 @@ PACKAGE_NAME="dropbear"
 PACKAGE_DESCRIPTION="Small SSH server and client"
 PACKAGE_HOMEPAGE="https://matt.ucc.asn.au/dropbear/dropbear.html"
 PACKAGE_VERSION="2018.76"
-PACKAGE_DEPENDS="libutil"
-PACKAGE_BUILD_DEPENDS="libutil"
+PACKAGE_REVISION="3"
+PACKAGE_DEPENDS="libutil, readline"
+PACKAGE_BUILD_DEPENDS="libutil, readline-dev"
 PACKAGE_CONFLICTS="openssh"
 
 PACKAGE_EXTRA_CONFIGURE_ARGS="
@@ -15,6 +16,8 @@ PACKAGE_EXTRA_CONFIGURE_ARGS="
 --disable-utmpx
 --disable-wtmp
 ac_cv_lib_crypt_crypt=no
+ac_cv_func_getpass=yes
+LIBS=-lreadline
 "
 
 # build a multi-call binary
@@ -35,7 +38,7 @@ PACKAGE_SOURCES=("https://dropbear.nl/mirror/releases/dropbear-${PACKAGE_VERSION
 
 PACKAGE_SOURCES_SHA256=('f2fb9167eca8cf93456a5fc1d4faf709902a3ab70dd44e352f3acbc3ffdaea65'
                         '54ad858e683ccbd5cbdf8facc18632e4ae1edd260a248582d608a98d1beb2aab'
-                        '31a832105c4faef04ad2e9d6700e1357058b026c43b8f7e1a924b9878fca9a68'
+                        'abe992432c431b2a73752ad8ff447d16f1c16e9967384e3d7b7de92120d2aae4'
                         '93a234ec97277003c893656aa14d3ae1b7c605aa56e7ecf585891a93d17ae146'
                         '0b634c9812e9c10ecc0bdc0ab96b2eab500901d6584dc1fcdf43f664ccdd0962'
                         '191511ab0d6a3847bf70298d90c433256f450001a2117451f45b40a355c97ba6'
