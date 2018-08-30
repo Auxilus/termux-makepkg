@@ -1,0 +1,26 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="termux-makepkg"
+PACKAGE_DESCRIPTION="Package builder for Termux"
+PACKAGE_HOMEPAGE="https://github.com/xeffyr/termux-makepkg"
+PACKAGE_VERSION="2.1"
+PACKAGE_HAS_NO_ARCH="true"
+PACKAGE_DEPENDS="autoconf, automake, bsdtar, bzip2, coreutils, clang, curl, diffutils, file, findutils, gawk, grep, gzip, libtool, lzip, lzop, m4, make, patch, perl, pkg-config, sed, tar, termux-elf-cleaner, unzip, util-linux, xz-utils"
+
+PACKAGE_SOURCES=("${PACKAGE_HOMEPAGE}/releases/download/v${PACKAGE_VERSION}-release/termux-makepkg-v${PACKAGE_VERSION}.sh")
+PACKAGE_SOURCES_SHA256=('882a405f0df89023551ef6f3dac9db93bd299d40cf65595ba545c3c8febc6d7f')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}"
+}
+
+package() {
+    install -Dm700 \
+        "${PACKAGE_MANIFEST_DIR}/termux-makepkg-v${PACKAGE_VERSION}.sh" \
+        "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/termux-makepkg"
+
+    ln -sfr \
+        "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/termux-makepkg" \
+        "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/makepkg"
+}
