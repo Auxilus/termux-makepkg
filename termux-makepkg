@@ -211,6 +211,34 @@ apply_patch() {
     fi
 }
 
+## Remove everything in directory but do not touch
+## itself.
+##
+##  Usage: clean_dir 'PATH TO DIRECTORY'
+##
+## Note that this function ignores file called '.makepkg.lock'
+## to prevent accidental build unlocking.
+clean_dir() {
+    if [ -z "${1+x}" ]; then
+        error_mesg "Error: clean_dir() should be called with argument."
+        exit 1
+    fi
+
+    set +e
+    if [ -d "${1}" ]; then
+        find "${1}" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            ! -iname ".makepkg.lock" \
+            -exec chmod -R 700 '{}' \; \
+            -exec rm -rf '{}' \;
+    else
+        chmod 600 "${1}"
+        rm -f "${1}"
+    fi
+    set -e
+}
+
 ## Download file from URL to destination.
 ##
 ##  Usage: download_file 'URL' 'DESTINATION PATH'
@@ -557,7 +585,7 @@ build_package() {
     mkdir -p "${PACKAGE_BUILD_DIR}"
 
     ## Try to create lock to prevent multiple builds of same package.
-    exec {BUILD_LOCK_FILE}>"${PACKAGE_BUILD_DIR}/lock"
+    exec {BUILD_LOCK_FILE}>"${PACKAGE_BUILD_DIR}/.makepkg.lock"
     if ! flock -n "${BUILD_LOCK_FILE}"; then
         error_mesg "Error: another build process for package '${PACKAGE_NAME}' is running."
         exit 1
@@ -686,11 +714,7 @@ build_package() {
 
     ## Remove old files from build dir but do not touch lock file.
     if [ -d "${PACKAGE_BUILD_DIR}" ]; then
-        find "${PACKAGE_BUILD_DIR}" \
-            -mindepth 1 \
-            -maxdepth 1 \
-            ! -iname "lock" \
-            -exec rm -rf '{}' \;
+        clean_dir "${PACKAGE_BUILD_DIR}"
     fi
 
     ## Creating necessary directories:
@@ -1150,11 +1174,7 @@ build_package() {
     ## Remove files from build dir (except lock) to free space.
     info_mesg "Cleaning build directory..."
     if [ -d "${PACKAGE_BUILD_DIR}" ]; then
-        find "${PACKAGE_BUILD_DIR}" \
-            -mindepth 1 \
-            -maxdepth 1 \
-            ! -iname "lock" \
-            -exec rm -rf '{}' \;
+        clean_dir "${PACKAGE_BUILD_DIR}"
     fi
 
     ## Installing built packages if requested.
@@ -1319,7 +1339,7 @@ create_source_archive() {
     mkdir -p "${PACKAGE_BUILD_DIR}"
 
     ## Try to create lock to prevent multiple builds of same package.
-    exec {BUILD_LOCK_FILE}>"${PACKAGE_BUILD_DIR}/lock"
+    exec {BUILD_LOCK_FILE}>"${PACKAGE_BUILD_DIR}/.makepkg.lock"
     if ! flock -n "${BUILD_LOCK_FILE}"; then
         error_mesg "Error: another build process for package '${PACKAGE_NAME}' is running."
         exit 1
@@ -1339,11 +1359,7 @@ create_source_archive() {
     fi
 
     ## Clean build directory before doing anything.
-    find "${PACKAGE_BUILD_DIR}" \
-        -mindepth 1 \
-        -maxdepth 1 \
-        ! -iname "lock" \
-        -exec rm -rf '{}' \;
+    clean_dir "${PACKAGE_BUILD_DIR}"
     mkdir -p "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}"
 
     title_mesg "Archiving source files for '${PACKAGE_NAME}'"
@@ -1456,11 +1472,7 @@ create_source_archive() {
     info_mesg "Done. Archive stored in ./${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz"
 
     info_mesg "Cleaning build directory..."
-    find "${PACKAGE_BUILD_DIR}" \
-        -mindepth 1 \
-        -maxdepth 1 \
-        ! -iname "lock" \
-        -exec rm -rf '{}' \;
+    clean_dir "${PACKAGE_BUILD_DIR}"
 
     title_mesg "Finished source archiving for '${PACKAGE_NAME}'"
     reset_title
