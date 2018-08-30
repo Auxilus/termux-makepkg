@@ -4,7 +4,7 @@ PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
 PACKAGE_NAME="termux-tools"
 PACKAGE_DESCRIPTION="Basic system tools for Termux"
 PACKAGE_HOMEPAGE="https://termux.com/"
-PACKAGE_VERSION="0.55"
+PACKAGE_VERSION="0.56"
 PACKAGE_HAS_NO_ARCH="true"
 PACKAGE_ESSENTIAL="true"
 PACKAGE_DEPENDS="termux-am"
@@ -16,7 +16,7 @@ PACKAGE_SOURCES=(chsh dalvikvm login motd pkg su termux-fix-shebang
 
 PACKAGE_SOURCES_SHA256=('4f77060030173c98208ba74c3404d980d59fb8602e4b80fddec4dc2515bc8fc4'
                         'bc2f29891596e058e06f22194bc0fabcc62f30f2fd918cc53d2d4ee99e9695c5'
-                        'bf91aac2f097806a9f0592e0a92a5a8e9c980967c1b37729a401d3649eab2384'
+                        'b81b7f5d14116da322913d69c1a7b497395fb66fc6bce24201b3bfd965e3a29e'
                         '9401b240a45b08f34c580ca542e19019adf0063838b2d3594e635dda22c23ac2'
                         '65b082c35d0627fb1fa3ae80e1583d5a2e9bb6963106400ab3281ff8297fa885'
                         '6faa4890a349b843fe0d64461b93552947d16d56dbc53b79291c8e8cd916fbc4'

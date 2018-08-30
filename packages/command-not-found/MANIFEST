@@ -4,11 +4,13 @@ PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
 PACKAGE_NAME="command-not-found"
 PACKAGE_DESCRIPTION="Suggest installation of packages in interactive shell sessions"
 PACKAGE_HOMEPAGE="https://termux.com"
-PACKAGE_VERSION="1.32"
+PACKAGE_VERSION="1.33"
 
-PACKAGE_SOURCES=("command-not-found.c"  "commands.h")
+PACKAGE_SOURCES=("command-not-found.c"
+                 "commands.h")
+
 PACKAGE_SOURCES_SHA256=('97f96e4ae726fff3baa061244333a90cbab7ae4eedcc9d3f3f7b9ddbdc9b617e'
-                        '7012c252a9780cf714a7ec614ce8e2cfaf77ba4208d1439d391b6e4a9e8a3c79')
+                        '5f8be24c0928513201d21fb44900b1d89e1d5e8c4cfe39808bc2d5486d501128')
 
 prepare() {
     PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}"
