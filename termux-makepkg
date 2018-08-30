@@ -71,6 +71,7 @@ declare -g -r PROGRAM_VERSION="v2.0-release"
 declare -r -a MAKEPKG_DEPENDENCIES=(
     'autoconf'
     'automake'
+    'bsdtar'
     'bzip2'
     'coreutils'
     'clang'
@@ -882,24 +883,30 @@ build_package() {
             verify_sha256 "${file_path}" "${PACKAGE_SOURCES_SHA256[i]}"
 
             ## Handle file in a specific way depending on it's type.
-            ## TODO: handle more archive types ?
-            if grep -qP '^.+\.tar(.(gz|bz2|lz|lzo|xz))?$' <<< "${file_name}" || \
-                grep -qP '^.+\.t(gz|bz2|lz|lzo|xz)$' <<< "${file_name}"; then
-                ## Unpacking TAR archive.
-                info_mesg " * Extracting '${file_name}'"
-                tar xf "${file_path}" -C "${PACKAGE_BUILD_DIR}"
-            elif grep -P '^.+\.zip$' <<< "${file_name}"; then
-                ## Unpacking ZIP archive.
-                info_mesg " * Extracting '${file_name}'"
-                unzip -q -o -d "${PACKAGE_BUILD_DIR}" "${file_path}"
-            else
-                ## Don't unpack files with unknown type. Just left
-                ## them for manual handling.
-                info_mesg " * Skipping extraction of '${file_name}'"
-            fi
+            local mime_type
+            mime_type=$(file -biL "${file_path}")
+
+            case "${mime_type}" in
+                *application/x-tar*|*application/zip*|*application/x-zip*|*application/x-cpio*)
+                    info_mesg " * Extracting '${file_name}'"
+                    bsdtar -xf "${file_path}" -C "${PACKAGE_BUILD_DIR}"
+                    ;;
+                *)
+                    ## Check if it possible to unpack file with `bsdtar`.
+                    if bsdtar -tf "${file_path}" -q '*' &>/dev/null; then
+                        info_mesg " * Extracting '${file_name}'"
+                        bsdtar -xf "${file_path}" -C "${PACKAGE_BUILD_DIR}"
+                    else
+                        ## Don't unpack files with unknown type. Just left
+                        ## them for manual handling.
+                        info_mesg " * Skipping extraction of '${file_name}'"
+                    fi
+                    ;;
+            esac
 
             unset file_name
             unset file_path
+            unset mime_type
         done
         unset i
     fi
@@ -1530,7 +1537,7 @@ create_source_archive() {
     info_mesg "Creating archive..."
     (
         cd "${PACKAGE_BUILD_DIR}"
-        tar zcf "${PACKAGE_MANIFEST_DIR}/${SOURCE_ARCHIVE_NAME}" \
+        bsdtar -zcf "${PACKAGE_MANIFEST_DIR}/${SOURCE_ARCHIVE_NAME}" \
             "${PACKAGE_NAME}"
     )
     info_mesg "Done. Archive stored in ./${SOURCE_ARCHIVE_NAME}"
