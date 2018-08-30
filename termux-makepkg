@@ -65,7 +65,7 @@ fi
 readonly PROGRAM_NAME=$(basename "${0}")
 
 ## Version.
-declare -g -r PROGRAM_VERSION="v2.1-release"
+declare -g -r PROGRAM_VERSION="v2.2-release"
 
 ## Dependencies.
 declare -r -a MAKEPKG_DEPENDENCIES=(
@@ -582,6 +582,7 @@ read_manifest() {
 
     ## Each package should have own installation directory.
     declare -g -r PACKAGE_INSTALL_DIR="${PACKAGE_BUILD_DIR}/installation"
+    declare -g -r PACKAGE_DEV_INSTALL_DIR="${PACKAGE_BUILD_DIR}/devpkg-installation"
 
     ## Remove info message once manifest processing is finished.
     echo -ne "\\e[1A\\e[2K\\r" >&2
@@ -804,6 +805,8 @@ build_package() {
     ## Creating necessary directories:
     mkdir -p "${PACKAGE_INSTALL_DIR}/DEBIAN"
     mkdir -p "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}"
+    mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN"
+    mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}"
 
     ##
     ## fetch(): download source files.
@@ -1065,10 +1068,6 @@ build_package() {
         if { [ -z "${PACKAGE_NO_DEV_SPLIT}" ] || [ "${PACKAGE_NO_DEV_SPLIT}" = "false" ]; } && \
             [ -d "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/include" ]; then
             info_mesg "Creating package '${PACKAGE_NAME}-dev' (development files for '${PACKAGE_NAME}')..."
-
-            PACKAGE_DEV_INSTALL_DIR="${PACKAGE_BUILD_DIR}/devinstall"
-            mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN"
-            mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}"
 
             ## Moving 'include' directory.
             mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/include" \
