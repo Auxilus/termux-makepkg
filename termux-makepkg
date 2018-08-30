@@ -276,21 +276,43 @@ download_file() {
         exit 1
     fi
 
-    ## Use `curl` to download file.
+    ## Do same checks for temporary file.
+    if [ -d "${destination_path}.tmp" ]; then
+        error_mesg "download_file(): destination path '${destination_path}.tmp' is a directory."
+        exit 1
+    fi
+    if [ -e "${destination_path}.tmp" ] && [ ! -f "${destination_path}.tmp" ]; then
+        error_mesg "download_file(): destination path '${destination_path}.tmp' is not a regular file."
+        exit 1
+    fi
+
+    ## Force remove temporary file in case if it exist.
+    rm -f "${destination_path}.tmp"
+
+    ## Use special trap for download_file() so we can remove temporary file
+    ## if got signal HUP/INT/TERM.
+    trap "error_mesg 'Stopping by user request...'; reset_title; rm -f '${destination_path}.tmp'; exit 1;" HUP INT TERM
+
+    ## Download file to `${destination_path}.tmp`. On success, move temporary
+    ## file `${destination_path}.tmp` to `${destination_path}`
     if curl \
             --progress \
             --location \
             --fail \
             --retry 5 \
-            --output "${destination_path}" \
+            --output "${destination_path}.tmp" \
             "${source_url}"; then
         ## Remove curl's progress bar once download finished successfully.
         echo -ne "\\e[1A\\e[2K\\r" >&2
+        mv -f "${destination_path}.tmp" "${destination_path}"
     else
-        rm -f "${destination_path}"
+        rm -f "${destination_path}.tmp"
         error_mesg "Error: failed to download '${source_url}'."
         exit 1
     fi
+
+    ## Restore original trap for signals.
+    trap 'error_mesg "Stopping by user request..."; reset_title; exit 1;' HUP INT TERM
 }
 
 ## Fix permissions in specified directory to ensure that
