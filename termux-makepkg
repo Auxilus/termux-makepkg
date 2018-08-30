@@ -445,6 +445,8 @@ read_manifest() {
             error_mesg "Error: your manifest file contains syntax errors. Please, fix them."
             exit 1
         else
+            info_mesg "Reading manifest file..."
+
             # shellcheck source=/dev/null
             source "${PACKAGE_MANIFEST_DIR}/MANIFEST"
         fi
@@ -580,6 +582,9 @@ read_manifest() {
 
     ## Each package should have own installation directory.
     declare -g -r PACKAGE_INSTALL_DIR="${PACKAGE_BUILD_DIR}/installation"
+
+    ## Remove info message once manifest processing is finished.
+    echo -ne "\\e[1A\\e[2K\\r" >&2
 }
 
 ###############################################################################
