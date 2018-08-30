@@ -294,7 +294,7 @@ download_file() {
 
     ## Use special trap for download_file() so we can remove temporary file
     ## if got signal HUP/INT/TERM.
-    trap "error_mesg 'Stopping by user request...'; reset_title; rm -f '${destination_path}.tmp'; exit 1;" HUP INT TERM
+    trap 'error_mesg "Stopping by user request..."; reset_title; rm -f "${destination_path}.tmp"; exit 1;' HUP INT TERM
 
     ## Download file to `${destination_path}.tmp`. On success, move temporary
     ## file `${destination_path}.tmp` to `${destination_path}`
@@ -347,6 +347,48 @@ fix_permissions() {
         find "${1}" -type f ! -executable -print0 | xargs -r -0 chmod 600
     else
         error_mesg "Error: fix_permissions() is called without argument."
+        exit 1
+    fi
+}
+
+## Verify SHA-256 checksum for specified file.
+##
+##  Usage: verify_sha256 'FILE PATH' 'SHA-256 HASH'
+##
+## Note that if checksum verification was failed, makepkg will
+## be stopped.
+verify_sha256() {
+    local FILE_PATH
+    local ACTUAL_SHA256
+    local EXPECTED_SHA256
+
+    if [ -z "${1+x}" ]; then
+        error_mesg "verify_sha256(): no file path specified."
+        exit 1
+    else
+        if ! grep -qP '^/.*' <<< "${1}"; then
+            error_mesg "verify_sha256(): file path should be absolute."
+            exit 1
+        fi
+
+        FILE_PATH=${1}
+    fi
+
+    if [ -z "${2+x}" ]; then
+        error_mesg "verify_sha256(): no SHA-256 checksum specified."
+        exit 1
+    else
+        EXPECTED_SHA256=${2}
+    fi
+
+    ACTUAL_SHA256=$(sha256sum "${FILE_PATH}" | awk '{ print $1 }')
+    if [ "${EXPECTED_SHA256}" != "${ACTUAL_SHA256}" ]; then
+        error_mesg "Wrong checksum for '$(basename "${FILE_PATH}")'."
+        echo
+        echo "Expected: ${EXPECTED_SHA256}"
+        echo "Actual:   ${ACTUAL_SHA256}"
+        echo
+        error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
         exit 1
     fi
 }
@@ -827,18 +869,7 @@ build_package() {
             file_path="${PACKAGE_MANIFEST_DIR}/${file_name}"
 
             info_mesg " * Verifying SHA-256 for '${file_name}'"
-            local actual_checksum
-            actual_checksum=$(sha256sum "${file_path}" | awk '{ print $1 }')
-            if [ "${PACKAGE_SOURCES_SHA256[i]}" != "${actual_checksum}" ]; then
-                error_mesg "Wrong checksum for '$(basename "${PACKAGE_SOURCES[i]}")'."
-                echo
-                echo "Expected: ${PACKAGE_SOURCES_SHA256[i]}"
-                echo "Actual:   ${actual_checksum}"
-                echo
-                error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
-                exit 1
-            fi
-            unset actual_checksum
+            verify_sha256 "${file_path}" "${PACKAGE_SOURCES_SHA256[i]}"
 
             ## Handle file in a specific way depending on it's type.
             ## TODO: handle more archive types ?
@@ -1436,19 +1467,8 @@ create_source_archive() {
             fi
 
             ## Verifying checksums.
-            local actual_checksum
             info_mesg " * Verifying SHA-256 for '${file_name}'"
-            actual_checksum=$(sha256sum "${PACKAGE_MANIFEST_DIR}/${file_name}" | awk '{ print $1 }')
-            if [ "${PACKAGE_SOURCES_SHA256[i]}" != "${actual_checksum}" ]; then
-                error_mesg "Wrong checksum for '$(basename "${PACKAGE_SOURCES[i]}")'."
-                echo
-                echo "Expected: ${PACKAGE_SOURCES_SHA256[i]}"
-                echo "Actual:   ${actual_checksum}"
-                echo
-                error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
-                exit 1
-            fi
-            unset actual_checksum
+            verify_sha256 "${PACKAGE_MANIFEST_DIR}/${file_name}" "${PACKAGE_SOURCES_SHA256[i]}"
 
             if [ ! -e "${PACKAGE_BUILD_DIR}/${PACKAGE_NAME}/${file_name}" ]; then
                 info_mesg " * Adding '${file_name}'"
@@ -1471,23 +1491,11 @@ create_source_archive() {
             fi
 
             ## Verifying checksums.
-            local actual_checksum
             info_mesg " * Verifying SHA-256 for '${PACKAGE_SOURCES[i]}'"
-            actual_checksum=$(sha256sum "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" | awk '{ print $1 }')
-            if [ "${PACKAGE_SOURCES_SHA256[i]}" != "${actual_checksum}" ]; then
-                error_mesg "Wrong checksum for '${PACKAGE_SOURCES[i]}'."
-                echo
-                echo "Expected: ${PACKAGE_SOURCES_SHA256[i]}"
-                echo "Actual:   ${actual_checksum}"
-                echo
-                error_mesg "You can generate new checksum list by executing '${PROGRAM_NAME} -g'."
-                exit 1
-            fi
-            unset actual_checksum
-
-            info_mesg " * Adding '${PACKAGE_SOURCES[i]}'"
+            verify_sha256 "${PACKAGE_MANIFEST_DIR}/${PACKAGE_SOURCES[i]}" "${PACKAGE_SOURCES_SHA256[i]}"
 
             ## Copying file.
+            info_mesg " * Adding '${PACKAGE_SOURCES[i]}'"
             local file_name
             if grep -qP '^\./' <<< "${PACKAGE_SOURCES[i]}"; then
                 file_name=$(echo "${PACKAGE_SOURCES[i]}" | cut -d / -f 2)
@@ -1505,6 +1513,7 @@ create_source_archive() {
     unset i
 
     ## Fixing permissions.
+    info_mesg "Fixing permissions for files..."
     fix_permissions "${PACKAGE_BUILD_DIR}"
 
     ## Creating archive.
