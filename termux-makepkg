@@ -65,7 +65,7 @@ fi
 readonly PROGRAM_NAME=$(basename "${0}")
 
 ## Version.
-declare -g -r PROGRAM_VERSION="v2.0-release"
+declare -g -r PROGRAM_VERSION="v2.1-release"
 
 ## Dependencies.
 declare -r -a MAKEPKG_DEPENDENCIES=(
