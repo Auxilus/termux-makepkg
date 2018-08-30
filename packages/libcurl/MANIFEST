@@ -1,0 +1,39 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="libcurl"
+PACKAGE_DESCRIPTION="Easy-to-use client-side URL transfer library"
+PACKAGE_HOMEPAGE="https://curl.haxx.se/"
+PACKAGE_VERSION="7.61.0"
+PACKAGE_DEPENDS="openssl, libnghttp2"
+PACKAGE_BUILD_DEPENDS="openssl-dev, libnghttp2-dev"
+PACKAGE_CONFLICTS="curl"
+PACKAGE_REPLACES="curl"
+PACKAGE_PROVIDES="curl"
+
+PACKAGE_EXTRA_CONFIGURE_ARGS="
+--enable-ntlm-wb=${TERMUX_PREFIX}/bin/ntlm_auth
+--with-ca-bundle=${TERMUX_PREFIX}/etc/tls/cert.pem
+--with-nghttp2
+--without-libidn
+--without-libidn2
+--without-librtmp
+--without-brotli
+--with-ssl
+"
+
+PACKAGE_SOURCES=("https://curl.haxx.se/download/curl-${PACKAGE_VERSION}.tar.bz2")
+PACKAGE_SOURCES_SHA256=('5f6f336921cf5b84de56afbd08dfb70adeef2303751ffb3e570c936c6d656c9c')
+
+prepare() {
+    PACKAGE_SOURCE_DIR="${PACKAGE_BUILD_DIR}/curl-${PACKAGE_VERSION}"
+}
+
+post_package() {
+    mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/bin"
+    mkdir -p "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/share/man/man1"
+    mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/bin/curl-config" \
+       "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/bin/curl-config"
+    mv "${PACKAGE_INSTALL_DIR}/${TERMUX_PREFIX}/share/man/man1/curl-config.1" \
+       "${PACKAGE_DEV_INSTALL_DIR}/${TERMUX_PREFIX}/share/man/man1"
+}
