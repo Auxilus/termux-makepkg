@@ -129,6 +129,9 @@ declare -g MAKEPKG_ENABLE_DEBUG_BUILD="false"
 ## even if they available locally.
 declare -g MAKEPKG_FORCE_DOWNLOAD_SOURCES="false"
 
+## Whether to overwrite built packages.
+declare -g MAKEPKG_FORCE_REBUILD="false"
+
 ## Whether to disable function `check()` in manifest.
 declare -g MAKEPKG_DISABLE_CHECK_FN="false"
 
@@ -601,6 +604,17 @@ read_manifest() {
 
 build_package() {
     read_manifest
+
+    if ! ${MAKEPKG_FORCE_REBUILD}; then
+        if [ -e "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb" ]; then
+            error_mesg "Error: package '${PACKAGE_NAME}' is already built."
+            error_mesg "Use '${PROGRAM_NAME} -f' to force rebuild package."
+            exit 1
+        fi
+    else
+        rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+        rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
+    fi
 
     ## Ensure that build dir is exists so it will be possible to create
     ## lock file.
@@ -1083,7 +1097,6 @@ build_package() {
             chmod 644 "${PACKAGE_DEV_INSTALL_DIR}/DEBIAN/control"
 
             ## Building *.deb archive.
-            rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-dev_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
             dpkg-deb \
                     --build \
                     --uniform-compression \
@@ -1182,7 +1195,6 @@ build_package() {
         [ -f "${PACKAGE_INSTALL_DIR}/DEBIAN/conffiles" ] && chmod 644 "${PACKAGE_INSTALL_DIR}/DEBIAN/conffiles"
 
         ## Building *.deb archive.
-        rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}_${PACKAGE_FULL_VERSION}_${PACKAGE_TARGET_ARCHITECTURE}.deb"
         dpkg-deb \
                 --build \
                 --uniform-compression \
@@ -1357,6 +1369,18 @@ generate_checksums() {
 create_source_archive() {
     read_manifest
 
+    local SOURCE_ARCHIVE_NAME="${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz"
+
+    if ! ${MAKEPKG_FORCE_REBUILD}; then
+        if [ -e "${PACKAGE_MANIFEST_DIR}/${SOURCE_ARCHIVE_NAME}" ]; then
+            error_mesg "Error: source archive '${SOURCE_ARCHIVE_NAME}' is already exist."
+            error_mesg "Use '${PROGRAM_NAME} -S -f' to force rebuild."
+            exit 1
+        fi
+    else
+        rm -f "${PACKAGE_MANIFEST_DIR}/${SOURCE_ARCHIVE_NAME}"
+    fi
+
     ## Create build directory.
     mkdir -p "${PACKAGE_BUILD_DIR}"
 
@@ -1487,11 +1511,10 @@ create_source_archive() {
     info_mesg "Creating archive..."
     (
         cd "${PACKAGE_BUILD_DIR}"
-        rm -f "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz"
-        tar zcf "${PACKAGE_MANIFEST_DIR}/${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz" \
+        tar zcf "${PACKAGE_MANIFEST_DIR}/${SOURCE_ARCHIVE_NAME}" \
             "${PACKAGE_NAME}"
     )
-    info_mesg "Done. Archive stored in ./${PACKAGE_NAME}-${PACKAGE_VERSION}.srcpkg.tar.gz"
+    info_mesg "Done. Archive stored in ./${SOURCE_ARCHIVE_NAME}"
 
     info_mesg "Cleaning build directory..."
     clean_dir "${PACKAGE_BUILD_DIR}"
@@ -1768,12 +1791,13 @@ create_new_package() {
 ###############################################################################
 
 set +u
-while getopts ":dghiqS-:" param; do
+while getopts ":dfghiqS-:" param; do
     case "${param}" in
         -)
             case "${OPTARG}" in
                 debug) MAKEPKG_ENABLE_DEBUG_BUILD="true";;
                 download) MAKEPKG_FORCE_DOWNLOAD_SOURCES="true";;
+                force) MAKEPKG_FORCE_REBUILD="true";;
                 geninteg) MAKEPKG_ACTION="generate_checksums";;
                 help) MAKEPKG_ACTION="show_help";;
                 install) MAKEPKG_INSTALL_BUILT_PACKAGE="true";;
@@ -1798,6 +1822,7 @@ while getopts ":dghiqS-:" param; do
             esac
             ;;
         d) MAKEPKG_ENABLE_DEBUG_BUILD="true";;
+        f) MAKEPKG_FORCE_REBUILD="true";;
         g) MAKEPKG_ACTION="generate_checksums";;
         h) MAKEPKG_ACTION="show_help";;
         i) MAKEPKG_INSTALL_BUILT_PACKAGE="true";;
@@ -1817,6 +1842,7 @@ set -u
 readonly MAKEPKG_ACTION
 readonly MAKEPKG_ENABLE_DEBUG_BUILD
 readonly MAKEPKG_FORCE_DOWNLOAD_SOURCES
+readonly MAKEPKG_FORCE_REBUILD
 readonly MAKEPKG_DISABLE_CHECK_FN
 readonly MAKEPKG_DISABLE_STDOUT
 readonly MAKEPKG_INSTALL_BUILT_PACKAGE
@@ -1850,6 +1876,8 @@ case "${MAKEPKG_ACTION}" in
         echo "  -d, --debug      Enable debug options for compilation."
         echo "                   Debugging information will not be"
         echo "                   stripped from binaries."
+        echo
+        echo "  -f, --force      Force overwrite already built packages."
         echo
         echo "  -g, --geninteg   Compute checksums for source files."
         echo
