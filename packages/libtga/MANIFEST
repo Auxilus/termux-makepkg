@@ -1,0 +1,10 @@
+#!/bin/sh
+PACKAGE_MAINTAINER="Leonid Plyushch <leonid.plyushch@gmail.com> @xeffyr"
+
+PACKAGE_NAME="libtga"
+PACKAGE_DESCRIPTION="Lightweight library to read and write tga images"
+PACKAGE_HOMEPAGE="http://tgalib.sourceforge.net/"
+PACKAGE_VERSION="1.0.1"
+
+PACKAGE_SOURCES=("http://downloads.sourceforge.net/project/tgalib/libtga/${PACKAGE_VERSION}/libtga-${PACKAGE_VERSION}.tar.gz")
+PACKAGE_SOURCES_SHA256=('038ff0dad25ae97cd7ece547bfab5d0328945d2c8c24c3ade75f682988797be3')
