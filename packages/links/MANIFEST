@@ -1,0 +1,4 @@
+PACKAGE_NAME=links
+PACKAGE_VERSION=2.17
+PACKAGE_SOURCES=("http://links.twibright.com/download/links-$PACKAGE_VERSION.tar.gz")                 
+PACKAGE_SOURCES_SHA256=('180ef70c60129b5a591a39a3ea33920ba7d181a83109cb75b1772e54cd37ebbc')
