@@ -82,7 +82,7 @@ declare -r -a MAKEPKG_DEPENDENCIES=(
     'gawk'
     'grep'
     'gzip'
-    'libandroid-support-dev'
+    'ndk-sysroot'
     'libtool'
     'lzip'
     'lzop'
