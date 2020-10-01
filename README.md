@@ -1,6 +1,6 @@
 # Termux package builder
 
-This is a tool for building \*.deb packages for [Termux](https://termux.com) on your
+This is a very good tool for building \*.deb packages for [Termux](https://termux.com) on your
 Android device. It is similar to [build-package.sh](https://github.com/xeffyr/termux-packages/blob/master/build-package.sh)
 script from [termux-packages](https://github.com/termux/termux-packages) or `makepkg`
 tool from [Arch Linux](https://www.archlinux.org/).
